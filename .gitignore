@@ -1,12 +1,40 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
 *.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Build / distribution
 dist/
 build/
-*.egg
-.venv/
-.env
-*.so
+*.whl
+
+# Config (may contain secrets)
+# ~/.config/pls/config.toml is per-user, not tracked here
+
+# Caches
 .ruff_cache/
 .pytest_cache/
+.mypy_cache/
+.cache/
+*.log
+
+# IDE / editor
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS noise
+.DS_Store
+Thumbs.db
