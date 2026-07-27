@@ -210,3 +210,195 @@ def try_resolve_direct(request: str) -> str | None:
             )
 
     return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# App launcher — open ANY installed application by name
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Pattern: "open/launch/start <app name>"
+# Must end at end-of-string so it doesn't steal "open image from downloads" etc.
+_LAUNCH_PATTERN = re.compile(
+    r"^(?:open|launch|start|run)\s+(?:the\s+)?(?P<app>.+?)(?:\s+app(?:lication)?)?\s*$",
+    re.I,
+)
+
+# Words that signal a folder/file/type request — skip app resolver for these
+# Note: keep this tight — only words that appear in folder/file resolver patterns
+_FOLDER_KEYWORDS = set(_DIR_ALIASES) | {
+    "folder", "directory", "dir",
+    "image", "photo", "picture",
+    "video", "audio", "music", "pdf", "document", "zip", "archive",
+    "trash", "bin", "recycle",
+}
+
+# Common name → binary aliases for apps whose display name ≠ binary name
+_APP_ALIASES: dict[str, str] = {
+    "vs code":              "code",
+    "vscode":               "code",
+    "visual studio code":   "code",
+    "android studio":       "android-studio",
+    "google chrome":        "google-chrome",
+    "chrome":               "google-chrome",
+    "chromium":             "chromium-browser",
+    "brave":                "brave-browser",
+    "file manager":         "nautilus",
+    "files":                "nautilus",
+    "text editor":          "gedit",
+    "system monitor":       "gnome-system-monitor",
+    "task manager":         "gnome-system-monitor",
+    "calculator":           "gnome-calculator",
+    "screenshot tool":      "gnome-screenshot",
+    "obs studio":           "obs",
+    "libreoffice writer":   "libreoffice --writer",
+    "libreoffice calc":     "libreoffice --calc",
+    "libreoffice impress":  "libreoffice --impress",
+    "virtual machine":      "virtualbox",
+    "vm":                   "virtualbox",
+}
+
+# .desktop search paths (XDG standard)
+_DESKTOP_DIRS = [
+    Path("/usr/share/applications"),
+    Path("/usr/local/share/applications"),
+    Path.home() / ".local/share/applications",
+    Path("/var/lib/flatpak/exports/share/applications"),
+    Path.home() / ".local/share/flatpak/exports/share/applications",
+    Path("/var/lib/snapd/desktop/applications"),
+]
+
+
+def _name_candidates(name: str) -> list[str]:
+    """Generate binary-name candidates from a human app name."""
+    n = name.lower().strip()
+    candidates = [
+        n,                              # "spotify"
+        n.replace(" ", "-"),            # "google chrome" → "google-chrome"
+        n.replace(" ", ""),             # "vs code" → "vscode"
+        n.replace(" ", "_"),            # "some app" → "some_app"
+        n.split()[-1],                  # last word: "google chrome" → "chrome"
+        n.split()[0],                   # first word: "mozilla firefox" → "mozilla"
+    ]
+    # Remove duplicates while preserving order
+    seen: set[str] = set()
+    result = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
+
+
+def _find_binary(name: str) -> str | None:
+    """Return the first binary found for `name`, or None."""
+    import shutil
+    # Check alias table first
+    alias = _APP_ALIASES.get(name.lower().strip())
+    if alias:
+        binary = alias.split()[0]
+        if shutil.which(binary):
+            return alias
+
+    for candidate in _name_candidates(name):
+        if shutil.which(candidate):
+            return candidate
+
+    # Check common snap / flatpak paths as last resort
+    extra_paths = [
+        Path("/snap/bin"),
+        Path("/var/lib/snapd/snap/bin"),
+        Path.home() / ".local/bin",
+        Path("/usr/local/bin"),
+    ]
+    for candidate in _name_candidates(name):
+        for base in extra_paths:
+            full = base / candidate
+            if full.is_file():
+                return str(full)
+
+    return None
+
+
+def _search_desktop_files(name: str) -> str | None:
+    """
+    Search .desktop files for an app whose Name= matches `name`.
+    Returns the Exec= command (cleaned) or None.
+    """
+    name_lower = name.lower().strip()
+
+    for desktop_dir in _DESKTOP_DIRS:
+        if not desktop_dir.is_dir():
+            continue
+        for desktop_file in desktop_dir.glob("*.desktop"):
+            try:
+                text = desktop_file.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+
+            # Quick pre-filter before parsing
+            if name_lower not in text.lower():
+                continue
+
+            # Parse Name= and Exec= from the [Desktop Entry] section
+            in_entry = False
+            app_name = ""
+            exec_cmd = ""
+            for line in text.splitlines():
+                line = line.strip()
+                if line == "[Desktop Entry]":
+                    in_entry = True
+                elif line.startswith("[") and line.endswith("]"):
+                    in_entry = False
+                if not in_entry:
+                    continue
+                if line.lower().startswith("name=") and not app_name:
+                    app_name = line.split("=", 1)[1].strip().lower()
+                elif line.lower().startswith("exec=") and not exec_cmd:
+                    exec_cmd = line.split("=", 1)[1].strip()
+
+            if not exec_cmd:
+                continue
+
+            # Check if Name matches
+            if name_lower in app_name or app_name in name_lower:
+                # Clean Exec= field: strip %u %f %F %U etc.
+                exec_clean = re.sub(r"%[a-zA-Z]", "", exec_cmd).strip()
+                # Return just the base command (no path needed if on PATH)
+                binary = exec_clean.split()[0]
+                import shutil
+                if shutil.which(binary) or Path(binary).is_file():
+                    return exec_clean
+
+    return None
+
+
+def try_resolve_app(request: str) -> str | None:
+    """
+    If the request is "open/launch <app>", find the binary and return a
+    setsid launch command — bypassing the AI entirely.
+
+    Returns the shell command string, or None if the app can't be found.
+    """
+    m = _LAUNCH_PATTERN.match(request.strip())
+    if not m:
+        return None
+
+    app_name = m.group("app").strip().lower()
+
+    # Don't steal folder/file/trash requests already handled elsewhere
+    words = set(app_name.split())
+    if words & _FOLDER_KEYWORDS:
+        return None
+
+    # 1. Try binary search
+    binary = _find_binary(app_name)
+
+    # 2. Fall back to .desktop file search
+    if not binary:
+        binary = _search_desktop_files(app_name)
+
+    if not binary:
+        return None  # app not installed — let the AI handle it
+
+    return f"setsid {binary} >/dev/null 2>&1 &"
+

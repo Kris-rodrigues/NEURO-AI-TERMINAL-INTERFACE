@@ -40,7 +40,7 @@ from pls.providers import ProviderError, get_provider
 from pls.safety import RiskLevel, analyze
 from pls.executor import run
 from pls.cli import _clean_command, _is_chat_response, _strip_chat_tag
-from pls.resolver import try_resolve, try_resolve_direct
+from pls.resolver import try_resolve, try_resolve_direct, try_resolve_app
 
 console    = Console()
 err_console = Console(stderr=True)
@@ -138,6 +138,12 @@ def _ask(request: str) -> None:
     resolved = try_resolve(request)
     if resolved is not None:
         request = resolved
+    else:
+        # ── App launcher — find installed binary and skip the AI ───────────────
+        app_cmd = try_resolve_app(request)
+        if app_cmd is not None:
+            _execute_command(app_cmd)
+            return
 
     config = load_config()
     provider_name = get_provider_name(config)
