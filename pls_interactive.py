@@ -40,6 +40,7 @@ from pls.providers import ProviderError, get_provider
 from pls.safety import RiskLevel, analyze
 from pls.executor import run
 from pls.cli import _clean_command, _is_chat_response, _strip_chat_tag
+from pls.resolver import try_resolve, try_resolve_direct
 
 console    = Console()
 err_console = Console(stderr=True)
@@ -52,8 +53,92 @@ def _on_sigint(sig, frame):
 signal.signal(signal.SIGINT, _on_sigint)
 
 
+def _execute_command(command: str) -> None:
+    """Display, confirm, and run a shell command."""
+    safety = analyze(command)
+
+    border = {
+        RiskLevel.SAFE:      "bright_green",
+        RiskLevel.CAUTION:   "yellow",
+        RiskLevel.DANGEROUS: "red",
+    }[safety.level]
+
+    console.print()
+    console.print(Panel(
+        Syntax(command, "bash", theme="monokai", word_wrap=True),
+        title=f"[bold {border}]command[/bold {border}]",
+        border_style=border,
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
+
+    if safety.warnings:
+        icon  = "⚠" if safety.level == RiskLevel.CAUTION else "☠"
+        label = "Caution" if safety.level == RiskLevel.CAUTION else "DANGEROUS"
+        console.print(f" [{border}]{icon} {label}:[/{border}] {', '.join(safety.warnings)}")
+
+    if safety.level == RiskLevel.DANGEROUS:
+        console.print("\n [red bold]Run this dangerous command?[/red bold] [dim](y/N/e)[/dim] ", end="")
+        default_run = False
+    else:
+        console.print("\n [bold bright_green]Run it?[/bold bright_green] [dim](Y/n/e)[/dim] ", end="")
+        default_run = True
+
+    try:
+        choice = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n[dim]Cancelled.[/dim]")
+        return
+
+    if choice == "e":
+        try:
+            import readline
+            readline.set_startup_hook(lambda: readline.insert_text(command))
+            console.print(" [dim]Edit then press Enter:[/dim]")
+            command = input(" $ ").strip() or command
+        except Exception:
+            pass
+        finally:
+            try: readline.set_startup_hook()
+            except: pass
+    elif choice == "n" or (not choice and not default_run):
+        console.print("[dim]Cancelled.[/dim]")
+        return
+    elif not choice and default_run:
+        pass  # Enter = accept default
+    elif choice != "y":
+        console.print("[dim]Cancelled.[/dim]")
+        return
+
+    console.print()
+    console.print()
+    result = run(command)
+
+    if result.interrupted:
+        console.print("[yellow]Interrupted.[/yellow]")
+    elif result.exit_code == 0:
+        console.print(f"[bold bright_green]✓ Done.[/bold bright_green]")
+    else:
+        console.print(f"[red bold]✗ Failed[/red bold] [dim](exit {result.exit_code})[/dim]")
+    console.print()
+
+
 def _ask(request: str) -> None:
     """Send one request to the AI and handle the response."""
+
+    # ── Direct command resolution (bypasses AI entirely) ──────────────────────
+    # Used for safety-critical exact operations like "clear trash".
+    direct_cmd = try_resolve_direct(request)
+    if direct_cmd is not None:
+        _execute_command(direct_cmd)
+        return
+
+    # ── Pre-resolve file/folder-open requests ─────────────────────────────────
+    # Rewrites vague requests to concrete paths before sending to the AI.
+    resolved = try_resolve(request)
+    if resolved is not None:
+        request = resolved
+
     config = load_config()
     provider_name = get_provider_name(config)
 
@@ -63,7 +148,7 @@ def _ask(request: str) -> None:
         err_console.print(f"[red bold]Error:[/red bold] {e}")
         return
 
-    context = gather()
+    context = gather(request)
     system_prompt = build_system_prompt(context, explain=False)
     user_message  = build_user_message(request)
 
@@ -94,75 +179,8 @@ def _ask(request: str) -> None:
         err_console.print("[yellow]Could not generate a command. Try rephrasing.[/yellow]")
         return
 
-    safety = analyze(command)
+    _execute_command(command)
 
-    border = {
-        RiskLevel.SAFE:      "bright_green",
-        RiskLevel.CAUTION:   "yellow",
-        RiskLevel.DANGEROUS: "red",
-    }[safety.level]
-
-    console.print()
-    console.print(Panel(
-        Syntax(command, "bash", theme="monokai", word_wrap=True),
-        title=f"[bold {border}]command[/bold {border}]",
-        border_style=border,
-        box=box.ROUNDED,
-        padding=(0, 1),
-    ))
-
-    if safety.warnings:
-        icon  = "⚠" if safety.level == RiskLevel.CAUTION else "☠"
-        label = "Caution" if safety.level == RiskLevel.CAUTION else "DANGEROUS"
-        console.print(f" [{border}]{icon} {label}:[/{border}] {', '.join(safety.warnings)}")
-
-    # Ask confirmation for every command
-    if safety.level == RiskLevel.DANGEROUS:
-        console.print("\n [red bold]Run this dangerous command?[/red bold] [dim](y/N/e)[/dim] ", end="")
-        default_run = False
-    else:
-        console.print("\n [bold bright_green]Run it?[/bold bright_green] [dim](Y/n/e)[/dim] ", end="")
-        default_run = True
-
-    try:
-        choice = input().strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        console.print("\n[dim]Cancelled.[/dim]")
-        return
-
-    if choice == "e":
-        # Let user edit the command inline
-        try:
-            import readline
-            readline.set_startup_hook(lambda: readline.insert_text(command))
-            console.print(" [dim]Edit then press Enter:[/dim]")
-            command = input(" $ ").strip() or command
-        except Exception:
-            pass
-        finally:
-            try: readline.set_startup_hook()
-            except: pass
-    elif choice == "n" or (not choice and not default_run):
-        console.print("[dim]Cancelled.[/dim]")
-        return
-    elif not choice and default_run:
-        pass  # Enter = accept default
-    elif choice != "y":
-        console.print("[dim]Cancelled.[/dim]")
-        return
-
-    console.print()
-
-    console.print()
-    result = run(command)
-
-    if result.interrupted:
-        console.print("[yellow]Interrupted.[/yellow]")
-    elif result.exit_code == 0:
-        console.print(f"[bold bright_green]✓ Done.[/bold bright_green]")
-    else:
-        console.print(f"[red bold]✗ Failed[/red bold] [dim](exit {result.exit_code})[/dim]")
-    console.print()
 
 
 def main():

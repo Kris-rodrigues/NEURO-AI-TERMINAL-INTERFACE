@@ -7,6 +7,7 @@
   <a href="#features">Features</a> •
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
+  <a href="#smart-commands">Smart Commands</a> •
   <a href="#providers">Providers</a> •
   <a href="#gui-overlay">GUI Overlay</a> •
   <a href="#terminal-dashboard">Terminal Dashboard</a> •
@@ -35,6 +36,7 @@ NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it i
 ## Features
 
 - 🧠 **Dual-mode AI** — automatically decides between a runnable shell command and a conversational answer
+- 🗂️ **Smart resolver** — instantly opens folders, files, and trash without waiting for the AI to respond
 - 🛡️ **Safety analysis** — dangerous commands (`rm -rf`, `chmod 777`, `dd`, etc.) are highlighted in red and require explicit opt-in
 - ✏️ **Inline edit** — press `e` at any confirmation prompt to edit the command before running it
 - 🔌 **Multi-provider** — Ollama (local, default), OpenAI, Anthropic, LM Studio, llama.cpp, any OpenAI-compatible endpoint
@@ -105,7 +107,7 @@ source "/path/to/NEURO-AI-TERMINAL-INTERFACE/pls_welcome.sh"
 Launch NEURO manually at any time:
 
 ```bash
-python neuro_interactive.py
+python pls_interactive.py
 ```
 
 Or let it start automatically via the shell config above. Once inside, just type naturally — no prefix, no quotes required:
@@ -142,6 +144,41 @@ Dangerous commands (`rm -rf`, `chmod 777`, `dd`, piping scripts into `bash`, etc
 
 ---
 
+## Smart Commands
+
+NEURO includes a **built-in resolver** that handles common requests instantly — no AI round-trip needed. These resolve immediately with the exact right command:
+
+### Open folders
+
+| What you say | What happens |
+|---|---|
+| `open downloads` | Opens `~/Downloads` in the file manager |
+| `open desktop` | Opens `~/Desktop` |
+| `open screenshots` | Opens `~/Pictures/Screenshots` |
+| `open documents` | Opens `~/Documents` |
+| `open trash` | Opens the Trash in Nautilus |
+| `open recycle bin` | Opens the Trash in Nautilus |
+
+### Open files from a folder
+
+| What you say | What happens |
+|---|---|
+| `open any image from downloads` | Opens a random image from `~/Downloads` |
+| `open first image in downloads` | Opens the alphabetically first image |
+| `open latest video from videos` | Opens the most recently modified video |
+| `open a pdf from documents` | Opens a random PDF |
+
+Supported file types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zip`, `archive`
+
+### Trash actions (AI bypassed entirely)
+
+| What you say | What happens |
+|---|---|
+| `clear trash` | Runs `gio trash --empty` — empties the trash |
+| `empty the recycle bin` | Same |
+
+---
+
 ## GUI Overlay
 
 The floating overlay is a Siri-style dark panel that lives in your system tray.
@@ -155,7 +192,7 @@ pip install pystray pillow
 **Launch:**
 
 ```bash
-python -m neuro.gui
+python -m pls.gui
 ```
 
 - Click the tray icon to open / close the panel
@@ -167,7 +204,7 @@ python -m neuro.gui
 
 ## Terminal Dashboard
 
-When `neuro_welcome.sh` is sourced in your shell config, every terminal startup renders a live NEURO dashboard before the REPL begins:
+When `pls_welcome.sh` is sourced in your shell config, every terminal startup renders a live NEURO dashboard before the REPL begins:
 
 ```
 ══════════════════════════════════════════════════════════════════════════
@@ -209,7 +246,7 @@ ollama pull qwen3.5:2b
 
 ### LM Studio / llama.cpp / any OpenAI-compatible server
 
-Edit `~/.config/neuro/config.toml`:
+Edit `~/.config/pls/config.toml`:
 
 ```toml
 [default]
@@ -240,7 +277,7 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-Or add them to `~/.config/neuro/config.toml`:
+Or add them to `~/.config/pls/config.toml`:
 
 ```toml
 [default]
@@ -259,7 +296,7 @@ model = "claude-sonnet-4-20250514"
 
 ## Config
 
-Config lives in `~/.config/neuro/config.toml`.
+Config lives in `~/.config/pls/config.toml`.
 
 **Full default config:**
 
@@ -299,10 +336,11 @@ api_key = ""
 ## How it works
 
 1. You type anything naturally in the REPL or GUI
-2. NEURO grabs context — your OS, shell, and current directory
-3. The LLM decides: **shell command** or **conversational answer**
-4. For shell commands: displays it colour-coded by risk level, waits for confirmation
-5. Runs the command and reports the exit status
+2. NEURO first checks its **smart resolver** — common folder/file/trash actions are handled instantly without touching the AI
+3. If the resolver doesn't match, NEURO grabs context (OS, shell, current directory) and sends it to the LLM
+4. The LLM decides: **shell command** or **conversational answer**
+5. For shell commands: displays it colour-coded by risk level, waits for confirmation
+6. Runs the command and reports the exit status
 
 No history stored. No data sent anywhere unless you use OpenAI or Anthropic.
 
@@ -311,22 +349,24 @@ No history stored. No data sent anywhere unless you use OpenAI or Anthropic.
 ## Project structure
 
 ```
-neuro/
-├── neuro/
+NEURO-AI-TERMINAL-INTERFACE/
+├── pls/
 │   ├── cli.py              # Core request handler
 │   ├── config.py           # Config loading / saving (TOML)
 │   ├── context.py          # OS / shell / directory context
 │   ├── executor.py         # Shell command runner
 │   ├── gui.py              # Floating GUI overlay (tkinter + pystray)
 │   ├── prompt.py           # System prompt builder
+│   ├── resolver.py         # Smart command resolver (bypasses AI for known patterns)
 │   ├── safety.py           # Dangerous-command detection
 │   └── providers/
 │       ├── __init__.py     # Provider registry
 │       ├── ollama.py
 │       ├── openai.py
 │       └── anthropic.py
-├── neuro_interactive.py    # Interactive REPL (no prefix needed)
-├── neuro_welcome.sh        # Biopunk dashboard + REPL launcher
+├── pls_interactive.py      # Interactive REPL (no prefix needed)
+├── pls_welcome.sh          # Biopunk dashboard + REPL launcher
+├── install.sh              # One-command installer
 ├── pyproject.toml
 └── README.md
 ```

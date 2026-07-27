@@ -35,27 +35,40 @@ Rules:
     no preamble, no "here is the command", no markdown, no backticks.
   • First character of your response must be the first character of the command.
   • Use && to chain steps. Match {shell} syntax.
-  • Launch ANY GUI application with nohup so the terminal doesn't hang
-    and GTK messages are suppressed:
-      nohup APP_NAME >/dev/null 2>&1 &
-  • Open files or folders with xdg-open (unless a specific app was requested):
-      nohup xdg-open PATH >/dev/null 2>&1 &
+  • Launch ANY GUI application with setsid so the terminal doesn't hang
+    and the process keeps its DISPLAY/WAYLAND environment:
+      setsid APP_NAME >/dev/null 2>&1 &
+  • Open files or folders with xdg-open wrapped in setsid:
+      setsid xdg-open PATH >/dev/null 2>&1 &
+  • Open folders directly with the file manager for best reliability:
+      setsid {file_manager} PATH >/dev/null 2>&1 &
   • If the command is destructive, append:  # WARNING: destructive operation
 
+  • Do NOT invent or guess filenames. If you need the first/latest/any file
+    in a directory and the exact name is not given, use shell glob expansion:
+      setsid xdg-open "$(ls ~/Downloads/*.png 2>/dev/null | head -1)" >/dev/null 2>&1 &
+    or find:
+      setsid xdg-open "$(find ~/Downloads -maxdepth 1 -type f -name '*.png' | sort | head -1)" >/dev/null 2>&1 &
+  • For "first image in X" → use: $(ls X/*.{{jpg,jpeg,png,gif,webp,bmp,tiff}} 2>/dev/null | head -1)
+  • Only use a literal filename when it appears in the Files in CWD listing or
+    the extra directory listing provided below.
+
 Examples (input → exact output, nothing else):
-  open firefox              →  nohup firefox >/dev/null 2>&1 &
-  open chrome               →  nohup google-chrome >/dev/null 2>&1 &
-  open the Downloads folder →  nohup xdg-open ~/Downloads >/dev/null 2>&1 &
-  open report.pdf           →  nohup xdg-open report.pdf >/dev/null 2>&1 &
-  open VS Code here         →  nohup code . >/dev/null 2>&1 &
-  open file manager         →  nohup {file_manager} >/dev/null 2>&1 &
-  open image.png in GIMP    →  nohup gimp image.png >/dev/null 2>&1 &
-  launch blender            →  nohup blender >/dev/null 2>&1 &
+  open firefox              →  setsid firefox >/dev/null 2>&1 &
+  open chrome               →  setsid google-chrome >/dev/null 2>&1 &
+  open the Downloads folder →  setsid {file_manager} ~/Downloads >/dev/null 2>&1 &
+  open the Desktop          →  setsid {file_manager} ~/Desktop >/dev/null 2>&1 &
+  open report.pdf           →  setsid xdg-open report.pdf >/dev/null 2>&1 &
+  open VS Code here         →  setsid code . >/dev/null 2>&1 &
+  open file manager         →  setsid {file_manager} >/dev/null 2>&1 &
+  open image.png in GIMP    →  setsid gimp image.png >/dev/null 2>&1 &
+  launch blender            →  setsid blender >/dev/null 2>&1 &
   install blender           →  sudo apt-get install -y blender
   list all files            →  ls -la
   kill port 3000            →  lsof -ti:3000 | xargs kill -9
   find files over 100MB     →  find . -type f -size +100M
   show disk usage           →  df -h
+  open first image in Downloads → setsid xdg-open "$(ls ~/Downloads/*.{{jpg,jpeg,png,gif,webp,bmp}} 2>/dev/null | head -1)" >/dev/null 2>&1 &
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STEP 2b — If QUESTION: respond conversationally (FORMAT 2)
@@ -98,7 +111,7 @@ Dev tools:    {tools}
 GUI apps:     {gui_apps}
 File manager: {file_manager}
 Files in CWD:
-{files}
+{files}{extra_dir_context}
 """
 
 EXPLAIN_SUFFIX = """
