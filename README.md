@@ -47,34 +47,54 @@ NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it i
 
 ## Install
 
-### Clone the repo
+### One-command install (recommended)
+
+```bash
+git clone https://github.com/Kris-rodrigues/NEURO-AI-TERMINAL-INTERFACE.git
+cd NEURO-AI-TERMINAL-INTERFACE
+bash install.sh
+```
+
+That's it. The installer will:
+- ✅ Create a Python virtual environment
+- ✅ Install all dependencies automatically
+- ✅ Ask if you want hardware stats (`psutil`) and GUI support (`pystray` + `pillow`)
+- ✅ Add NEURO to your `~/.bashrc` or `~/.zshrc` so it starts on every terminal
+
+**Open a new terminal** after install — the dashboard and REPL will launch automatically.
+
+---
+
+### Manual install (advanced)
+
+<details>
+<summary>Click to expand</summary>
 
 ```bash
 git clone https://github.com/Kris-rodrigues/NEURO-AI-TERMINAL-INTERFACE.git
 cd NEURO-AI-TERMINAL-INTERFACE
 
-# Create a virtual environment and install dependencies
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install core dependencies
 pip install -e .
 
-# Optional: GUI support (floating overlay + system tray icon)
-pip install pystray pillow
-
-# Optional: hardware stats in the dashboard
+# Optional: live hardware stats in the dashboard
 pip install psutil
+
+# Optional: floating GUI overlay + system tray icon
+pip install pystray pillow
 ```
 
-### Terminal Dashboard + REPL on startup
-
-Add this to your `~/.bashrc` or `~/.zshrc` so NEURO launches automatically every time you open a terminal:
+Then add this to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-# Adjust the path to where you cloned the repo
-source "/path/to/neuro/neuro_welcome.sh"
+source "/path/to/NEURO-AI-TERMINAL-INTERFACE/pls_welcome.sh"
 ```
 
-> **Note:** `pls_welcome.sh` and `pls_interactive.py` are the current script filenames — update the source path to wherever you cloned the repo.
+</details>
 
 ---
 

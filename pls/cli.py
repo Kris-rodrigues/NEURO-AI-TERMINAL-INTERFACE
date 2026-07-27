@@ -6,6 +6,7 @@ import sys
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 
@@ -42,6 +43,15 @@ def _clean_command(raw: str) -> str:
     if cleaned.startswith("`") and cleaned.endswith("`"):
         cleaned = cleaned[1:-1]
     cleaned = re.sub(r"\s*#\s*WARNING:.*$", "", cleaned, flags=re.MULTILINE).strip()
+    # Strip any stray label lines the model may leak before the actual command
+    # e.g. "Mode A", "Format 1", "Shell Command:", etc.
+    _label_pattern = re.compile(
+        r"^(mode\s+[ab]|format\s+[12]|shell\s+command[:\s]*|command[:\s]*)\s*$",
+        re.IGNORECASE,
+    )
+    lines = cleaned.splitlines()
+    lines = [ln for ln in lines if not _label_pattern.match(ln.strip())]
+    cleaned = "\n".join(lines).strip()
     return cleaned
 
 
@@ -63,6 +73,39 @@ def _read_stdin() -> str | None:
     if sys.stdin.isatty():
         return None
     return sys.stdin.read().strip() or None
+
+
+# ── Chat response helpers ──────────────────────────────────────────────────
+
+_CHAT_TAG = "[CHAT]"
+
+
+def _is_chat_response(raw: str) -> bool:
+    """Return True when the AI chose conversational / AI mode."""
+    return raw.lstrip().startswith(_CHAT_TAG)
+
+
+def _strip_chat_tag(raw: str) -> str:
+    text = raw.lstrip()
+    if text.startswith(_CHAT_TAG):
+        text = text[len(_CHAT_TAG):].lstrip("\n")
+    return text
+
+
+def _display_chat_response(text: str) -> None:
+    """Render a conversational AI answer with nice rich formatting."""
+    # Convert our simple code-block markers for rich Markdown rendering
+    console.print()
+    console.print(Panel(
+        Markdown(text),
+        title="[bold cyan]✦ AI Response[/bold cyan]",
+        border_style="cyan",
+        padding=(1, 2),
+    ))
+    console.print()
+
+
+# ── Shell command helpers ───────────────────────────────────────────────────
 
 
 def _display_command(command: str, risk: RiskLevel) -> None:
@@ -161,6 +204,13 @@ def _run_request(
             err_console.print(f"\n[red bold]Error:[/red bold] {e}")
             sys.exit(1)
 
+    # ── Conversational / AI mode ────────────────────────────────────────────
+    if _is_chat_response(raw_response):
+        chat_text = _strip_chat_tag(raw_response)
+        _display_chat_response(chat_text)
+        return
+
+    # ── Shell command mode ──────────────────────────────────────────────────
     command = _clean_command(raw_response)
     if not command:
         err_console.print("[yellow]No command generated. Try rephrasing your request.[/yellow]")

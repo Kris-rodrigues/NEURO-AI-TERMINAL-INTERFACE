@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pls-sh"
+name = "neuro-ai-terminal"
 version = "0.2.0"
-description = "Terminal in natural language. Just say what you want."
+description = "NEURO — an always-on biopunk AI terminal interface. Talk to your shell in plain English."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    { name = "salvy9978" },
+    { name = "kris" },
 ]
-keywords = ["cli", "terminal", "natural-language", "llm", "ollama", "ai"]
+keywords = ["terminal", "ai", "assistant", "natural-language", "llm", "ollama", "repl", "biopunk"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -39,12 +39,10 @@ dev = [
 ]
 
 [project.scripts]
-pls = "pls.cli:main"
+neuro = "pls.cli:main"
+neuro-gui = "pls.gui:main"
 
-[project.urls]
-Homepage = "https://github.com/salvy9978/pls"
-Repository = "https://github.com/salvy9978/pls"
-Issues = "https://github.com/salvy9978/pls/issues"
+
 
 [tool.hatch.build.targets.wheel]
 packages = ["pls"]

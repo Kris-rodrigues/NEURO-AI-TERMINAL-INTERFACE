@@ -19,6 +19,7 @@ def run(command: str) -> ExecutionResult:
         process = subprocess.Popen(
             command,
             shell=True,
+            executable="/bin/bash",
             stdout=sys.stdout,
             stderr=sys.stderr,
             stdin=sys.stdin,
