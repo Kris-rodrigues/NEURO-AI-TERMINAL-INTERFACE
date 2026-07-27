@@ -1,6 +1,6 @@
 <p align="center">
-  <h1 align="center">NEURO — AI Terminal Interface</h1>
-  <p align="center">Your terminal, supercharged with an always-on AI brain.</p>
+  <h1 align="center">NEURO</h1>
+  <p align="center">An always-on AI brain that lives inside your terminal.</p>
 </p>
 
 <p align="center">
@@ -8,29 +8,27 @@
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
   <a href="#providers">Providers</a> •
-  <a href="#gui">GUI Overlay</a> •
+  <a href="#gui-overlay">GUI Overlay</a> •
   <a href="#terminal-dashboard">Terminal Dashboard</a> •
   <a href="#config">Config</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-%3E%3D3.9-blue" alt="Python">
-  <img src="https://img.shields.io/github/license/jxipaul/pls" alt="License">
+  <img src="https://img.shields.io/github/license/Kris-rodrigues/NEURO-AI-TERMINAL-INTERFACE" alt="License">
   <img src="https://img.shields.io/badge/AI-Ollama%20%7C%20OpenAI%20%7C%20Anthropic-brightgreen" alt="Providers">
-  <img src="https://img.shields.io/badge/interface-CLI%20%7C%20GUI%20%7C%20REPL-purple" alt="Interfaces">
+  <img src="https://img.shields.io/badge/interface-REPL%20%7C%20GUI%20%7C%20Dashboard-purple" alt="Interfaces">
 </p>
 
 ---
 
-NEURO is a **biopunk-themed AI assistant that lives inside your terminal**. You can talk to it in plain English (or any language) without any special command prefix — it decides whether to generate a shell command or answer conversationally. It ships with three interfaces:
+NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it in plain English — or any language — without any command prefix. It automatically decides whether your input needs a runnable shell command or a conversational answer. It ships with three interfaces:
 
-| Interface | How to use |
+| Interface | Description |
 |---|---|
-| **CLI** (`pls`) | One-shot commands from your normal shell |
-| **Interactive REPL** | An always-on AI session in your terminal |
+| **Interactive REPL** | An always-on AI session launched on every terminal startup |
 | **GUI Overlay** | A floating Siri-style window with a system tray icon |
-
-It also renders a **cyberpunk welcome dashboard** every time you open a terminal — showing live CPU, RAM, GPU, disk, network, and top-process stats.
+| **Terminal Dashboard** | A live biopunk hardware stats panel shown on every terminal open |
 
 ---
 
@@ -40,102 +38,93 @@ It also renders a **cyberpunk welcome dashboard** every time you open a terminal
 - 🛡️ **Safety analysis** — dangerous commands (`rm -rf`, `chmod 777`, `dd`, etc.) are highlighted in red and require explicit opt-in
 - ✏️ **Inline edit** — press `e` at any confirmation prompt to edit the command before running it
 - 🔌 **Multi-provider** — Ollama (local, default), OpenAI, Anthropic, LM Studio, llama.cpp, any OpenAI-compatible endpoint
-- 💻 **GUI overlay** — `pls-gui` spawns a floating dark-theme window with a system-tray icon (no terminal required)
-- 🖥️ **Live hardware dashboard** — CPU/GPU/RAM/Disk bars with temperature, clock speed, and power draw, rendered on every terminal open
-- 📡 **Context-aware** — passes your OS, shell, and current directory to the LLM for better commands
+- 💻 **GUI overlay** — a floating dark-theme window with a system-tray icon, no terminal needed
+- 🖥️ **Live hardware dashboard** — CPU/GPU/RAM/Disk bars with temperature, clock speed, and power draw on every terminal open
+- 📡 **Context-aware** — passes your OS, shell, and current directory to the LLM for accurate commands
 - 🔒 **Private by default** — no data sent anywhere when using Ollama
 
 ---
 
 ## Install
 
-### Option A — pip / pipx (recommended for the `pls` CLI only)
+### Clone the repo
 
 ```bash
-pipx install pls-sh   # recommended — isolated environment
-# or
-pip install pls-sh
-```
+git clone https://github.com/Kris-rodrigues/NEURO-AI-TERMINAL-INTERFACE.git
+cd NEURO-AI-TERMINAL-INTERFACE
 
-### Option B — clone the repo (full NEURO experience)
-
-```bash
-git clone https://github.com/jxipaul/pls.git
-cd pls
-
-# Create a virtual environment and install
+# Create a virtual environment and install dependencies
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"      # installs pls + dev tools
+pip install -e .
 
-# Optional: GUI support (floating overlay + tray icon)
+# Optional: GUI support (floating overlay + system tray icon)
 pip install pystray pillow
+
+# Optional: hardware stats in the dashboard
+pip install psutil
 ```
 
-### Terminal Dashboard (optional)
+### Terminal Dashboard + REPL on startup
 
-To get the NEURO welcome dashboard and interactive REPL on every terminal startup, add this to your `~/.bashrc` or `~/.zshrc`:
+Add this to your `~/.bashrc` or `~/.zshrc` so NEURO launches automatically every time you open a terminal:
 
 ```bash
 # Adjust the path to where you cloned the repo
-source "/path/to/pls/pls_welcome.sh"
+source "/path/to/neuro/neuro_welcome.sh"
 ```
+
+> **Note:** `pls_welcome.sh` and `pls_interactive.py` are the current script filenames — update the source path to wherever you cloned the repo.
 
 ---
 
 ## Usage
 
-### CLI — one-shot commands
+### Interactive REPL
+
+Launch NEURO manually at any time:
 
 ```bash
-pls "find files bigger than 100MB"
-pls "kill whatever is using port 3000"
-pls "convert video.mp4 to gif"
-pls "show disk usage sorted by size"
-pls "rename all .jpeg files to .jpg"
-pls "what is the difference between grep and ripgrep?"   # conversational
+python neuro_interactive.py
 ```
 
-Works offline by default with [Ollama](https://ollama.ai). No API key, no internet, no telemetry.
+Or let it start automatically via the shell config above. Once inside, just type naturally — no prefix, no quotes required:
 
-#### Flags
-
-```bash
-pls "do something" --explain        # explains what the command does
-pls "do something" --yes            # skip confirmation, just run it
-pls "do something" --dry-run        # show command but don't run it
-pls "do something" --provider openai
-pls "do something" --model gpt-4o
-pls "do something" --api-url http://localhost:8080
-pls --last                          # show the last generated command
-echo "do something" | pls           # pipe from stdin
 ```
+▶ find files bigger than 100MB
+▶ kill whatever is using port 3000
+▶ convert video.mp4 to gif
+▶ what is the difference between grep and ripgrep?
+▶ explain how SSH tunnelling works
+```
+
+NEURO decides on its own whether to generate a shell command or answer conversationally. Press `Ctrl+C` or type `exit` / `quit` to return to your regular shell.
+
+#### Confirmation prompts
+
+When NEURO generates a shell command it always shows it and asks before running:
+
+```
+╭─ command ──────────────────────────────────╮
+│ find . -size +100M                         │
+╰────────────────────────────────────────────╯
+
+ Run it? (Y/n/e)
+```
+
+- Press **Enter** or `y` → run
+- Press `n` → cancel
+- Press `e` → edit the command inline before running
 
 #### Safety
 
-NEURO flags dangerous commands before running them. Stuff like `rm -rf`, `chmod 777`, `dd`, piping random scripts into `bash` — all highlighted in red with a warning. Dangerous commands flip the confirmation to opt-in (`y/N` instead of `Y/n`).
-
-Press `e` at the confirmation prompt to edit the command before running it.
-
-### Interactive REPL — always-on AI session
-
-```bash
-python pls_interactive.py
-```
-
-Or if it's sourced via `pls_welcome.sh`, the REPL starts automatically in every new terminal. Type anything; no `pls` prefix needed. Press `Ctrl+C` or type `exit` to return to your regular shell.
+Dangerous commands (`rm -rf`, `chmod 777`, `dd`, piping scripts into `bash`, etc.) are flagged in red with a ☠ warning, and the default flips to **no** (`y/N`).
 
 ---
 
-## GUI
+## GUI Overlay
 
 The floating overlay is a Siri-style dark panel that lives in your system tray.
-
-```bash
-pls-gui          # if installed via pip/pipx
-# or
-python -m pls.gui
-```
 
 **Requirements:**
 
@@ -143,101 +132,116 @@ python -m pls.gui
 pip install pystray pillow
 ```
 
-- Click the tray icon to open/close the panel
-- Type your request and press Enter (or click ⏎)
-- Safe commands show a **Run** button; dangerous ones turn it red
+**Launch:**
+
+```bash
+python -m neuro.gui
+```
+
+- Click the tray icon to open / close the panel
+- Type your request and press Enter or click ⏎
+- Safe commands show a green **Run** button; dangerous ones turn it red
 - The panel is draggable and stays on top of other windows
 
 ---
 
 ## Terminal Dashboard
 
-When `pls_welcome.sh` is sourced in your shell config, every terminal startup renders a live NEURO dashboard:
+When `neuro_welcome.sh` is sourced in your shell config, every terminal startup renders a live NEURO dashboard before the REPL begins:
 
 ```
-══════════════════════════════════════════════════════════════
+══════════════════════════════════════════════════════════════════════════
    ███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗
    ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗
    ██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║
    ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║
    ██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝
-══════════════════════════════════════════════════════════════
-◈ SYSTEM                      ⚡ HARDWARE
-DATE  MON, 27 JUL 2026        CPU  ████████░░░░  42%  52°C  3.60 GHz
-TIME  11:30 AM                RAM  ██████░░░░░░  58%  9.3/16.0 GB
-USER  KRIS                    GPU  ████░░░░░░░░  30%  65°C  1920 MHz
-UPTIME 3h 12m                 VRAM ███░░░░░░░░░  28%  2.2/8.0 GB
-NET ↓  1.2 MB/s               DISK ███████░░░░░  61%  245/400 GB
+══════════════════════════════════════════════════════════════════════════
+◈ SYSTEM                         ⚡ HARDWARE
+DATE   MON, 27 JUL 2026          CPU  ████████░░░░  42%   52°C  3.60 GHz
+TIME   11:30 AM                  RAM  ██████░░░░░░  58%   9.3/16.0 GB
+USER   KRIS                      GPU  ████░░░░░░░░  30%   65°C  1920 MHz
+UPTIME 3h 12m                    VRAM ███░░░░░░░░░  28%   2.2/8.0 GB
+NET ↓  1.2 MB/s                  DISK ███████░░░░░  61%   245/400 GB
+NET ↑  0.3 MB/s
 ```
 
 **Requirements for hardware stats:**
 
 ```bash
-pip install psutil        # CPU / RAM / disk / network
-# nvidia-smi must be on PATH for GPU stats (comes with NVIDIA drivers)
+pip install psutil
+# For GPU stats: nvidia-smi must be on PATH (ships with NVIDIA drivers)
 ```
 
 ---
 
 ## Providers
 
-### Ollama (default — local, private)
+### Ollama (default — local, private, no API key)
 
 ```bash
+# Make sure Ollama is running
 ollama serve
 ollama pull qwen3.5:2b
 
-pls "list all docker containers"   # just works
+# NEURO will use it automatically
 ```
 
 ### LM Studio / llama.cpp / any OpenAI-compatible server
 
-```bash
-# LM Studio (port 1234 by default)
-pls config set default provider lmstudio
+Edit `~/.config/neuro/config.toml`:
 
-# Any OpenAI-compatible endpoint (llama.cpp, vLLM, OpenRouter, etc.)
-pls config set custom api_url http://localhost:8080
-pls config set custom model my-model
-pls config set custom api_key sk-...     # optional
-pls config set default provider custom
+```toml
+[default]
+provider = "lmstudio"
+
+[lmstudio]
+api_url = "http://localhost:1234/v1/chat/completions"
+model = ""
 ```
 
-`pls` automatically handles URL expansion — provide the base host:port and it appends `/v1/chat/completions`.
+Or for any custom OpenAI-compatible endpoint:
+
+```toml
+[default]
+provider = "custom"
+
+[custom]
+api_url = "http://localhost:8080"   # NEURO appends /v1/chat/completions
+model = "my-model"
+api_key = "sk-..."                  # optional
+```
 
 ### OpenAI / Anthropic
 
 ```bash
-# Set env vars
+# Set environment variables
 export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
+```
 
-# Or save in config
-pls config set openai api_key sk-...
-pls config set anthropic api_key sk-ant-...
+Or add them to `~/.config/neuro/config.toml`:
 
-# Use them
-pls "do something" --provider openai
-pls "do something" --provider anthropic
+```toml
+[default]
+provider = "anthropic"
 
-# Or set as default
-pls config set default provider anthropic
+[openai]
+api_key = "sk-..."
+model = "gpt-4o-mini"
+
+[anthropic]
+api_key = "sk-ant-..."
+model = "claude-sonnet-4-20250514"
 ```
 
 ---
 
 ## Config
 
-Config lives in `~/.config/pls/config.toml`.
+Config lives in `~/.config/neuro/config.toml`.
 
-```bash
-pls config show          # see current config
-pls config set ...       # change a value
-pls config get ...       # read a single value
-pls config reset         # back to defaults
-```
-
-**Default config:**
+**Full default config:**
 
 ```toml
 [default]
@@ -258,9 +262,11 @@ model = "claude-sonnet-4-20250514"
 
 [lmstudio]
 api_url = "http://localhost:1234/v1/chat/completions"
+model = ""
 
 [llamacpp]
 api_url = "http://localhost:8080/v1/chat/completions"
+model = ""
 
 [custom]
 api_url = ""
@@ -272,35 +278,35 @@ api_key = ""
 
 ## How it works
 
-1. You type what you want in plain English
-2. `pls` grabs context — your OS, shell, and current directory
+1. You type anything naturally in the REPL or GUI
+2. NEURO grabs context — your OS, shell, and current directory
 3. The LLM decides: **shell command** or **conversational answer**
-4. For commands: shows you the command, color-codes it by risk, asks for confirmation
-5. Runs it and reports the exit status
+4. For shell commands: displays it colour-coded by risk level, waits for confirmation
+5. Runs the command and reports the exit status
 
-No history stored, no data sent anywhere (unless you use OpenAI / Anthropic).
+No history stored. No data sent anywhere unless you use OpenAI or Anthropic.
 
 ---
 
 ## Project structure
 
 ```
-pls/
-├── pls/
-│   ├── cli.py          # Main CLI entry point
-│   ├── config.py       # Config loading / saving (TOML)
-│   ├── context.py      # OS / shell context gathering
-│   ├── executor.py     # Shell command runner
-│   ├── gui.py          # Siri-style floating GUI overlay
-│   ├── prompt.py       # System prompt builder
-│   ├── safety.py       # Dangerous-command detection
+neuro/
+├── neuro/
+│   ├── cli.py              # Core request handler
+│   ├── config.py           # Config loading / saving (TOML)
+│   ├── context.py          # OS / shell / directory context
+│   ├── executor.py         # Shell command runner
+│   ├── gui.py              # Floating GUI overlay (tkinter + pystray)
+│   ├── prompt.py           # System prompt builder
+│   ├── safety.py           # Dangerous-command detection
 │   └── providers/
-│       ├── __init__.py # Provider registry
+│       ├── __init__.py     # Provider registry
 │       ├── ollama.py
 │       ├── openai.py
 │       └── anthropic.py
-├── pls_interactive.py  # Interactive REPL (no prefix needed)
-├── pls_welcome.sh      # Terminal dashboard + REPL launcher
+├── neuro_interactive.py    # Interactive REPL (no prefix needed)
+├── neuro_welcome.sh        # Biopunk dashboard + REPL launcher
 ├── pyproject.toml
 └── README.md
 ```
