@@ -177,6 +177,29 @@ Supported file types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zi
 | `clear trash` | Runs `gio trash --empty` — empties the trash |
 | `empty the recycle bin` | Same |
 
+### Launch any app
+
+NEURO can open **any installed application** by name — no AI needed. It searches installed binaries and `.desktop` files across your system automatically.
+
+| What you say | What happens |
+|---|---|
+| `open firefox` | Launches Firefox |
+| `open google chrome` | Launches Chrome |
+| `open vs code` | Launches VS Code (`code`) |
+| `open calculator` | Launches GNOME Calculator |
+| `open file manager` | Launches Nautilus |
+| `open spotify` | Launches Spotify (if installed) |
+| `open discord` | Launches Discord (if installed) |
+| `launch vlc` | Launches VLC |
+| `open libreoffice writer` | Launches LibreOffice Writer |
+| `start steam` | Launches Steam (if installed) |
+
+**How it works:**
+1. Checks a built-in alias table (`google chrome` → `google-chrome`, `vs code` → `code`, etc.)
+2. Tries common binary-name variations (with hyphens, no spaces, last word)
+3. Searches `.desktop` files in `/usr/share/applications`, Flatpak, Snap, and `~/.local/share/applications`
+4. If the app isn't installed → falls through to the AI gracefully
+
 ---
 
 ## GUI Overlay
@@ -336,11 +359,15 @@ api_key = ""
 ## How it works
 
 1. You type anything naturally in the REPL or GUI
-2. NEURO first checks its **smart resolver** — common folder/file/trash actions are handled instantly without touching the AI
-3. If the resolver doesn't match, NEURO grabs context (OS, shell, current directory) and sends it to the LLM
+2. NEURO runs its **smart resolver pipeline** — common requests are handled instantly without any AI call:
+   - Trash open/clear → exact command, no AI
+   - Folder opens (Downloads, Screenshots, etc.) → file manager launched directly
+   - File picks ("open any image from Downloads") → real file found by Python glob
+   - App launches ("open spotify") → binary found via `which` or `.desktop` search
+3. If the resolver doesn't match, NEURO grabs context (OS, shell, current directory) and calls the LLM
 4. The LLM decides: **shell command** or **conversational answer**
-5. For shell commands: displays it colour-coded by risk level, waits for confirmation
-6. Runs the command and reports the exit status
+5. For shell commands: displays it colour-coded by risk level, waits for your confirmation
+6. Runs the command and reports exit status
 
 No history stored. No data sent anywhere unless you use OpenAI or Anthropic.
 
