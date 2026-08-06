@@ -229,8 +229,26 @@ def _ask(request: str, flags: Flags | None = None) -> None:
         return
 
     # ── Pre-resolve file/folder-open requests ─────────────────────────────────
+    # try_resolve() returns:
+    #   'open folder "/path"'  → bare folder open (run nautilus directly)
+    #   'open "/path/file"'    → specific file open (run xdg-open directly)
+    #   None                   → not a folder/file pattern, try app launcher
     resolved = try_resolve(request)
     if resolved is not None:
+        import re as _re
+        # Bare folder open: open folder "/absolute/path"
+        _fm = _re.match(r'^open folder "(.+)"$', resolved)
+        if _fm:
+            path = _fm.group(1)
+            _execute_command(f'setsid nautilus "{path}" >/dev/null 2>&1 &', flags)
+            return
+        # Specific file open: open "/absolute/path/file.ext"
+        _ff = _re.match(r'^open "(.+)"$', resolved)
+        if _ff:
+            path = _ff.group(1)
+            _execute_command(f'setsid xdg-open "{path}" >/dev/null 2>&1 &', flags)
+            return
+        # Fallback: rewrite and let AI handle it
         request = resolved
     else:
         app_cmd = try_resolve_app(request)
