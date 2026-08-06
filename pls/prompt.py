@@ -43,6 +43,10 @@ Rules:
   • Open folders directly with the file manager for best reliability:
       setsid {file_manager} PATH >/dev/null 2>&1 &
   • If the command is destructive, append:  # WARNING: destructive operation
+  • Create empty files with touch, NEVER with echo or redirection:
+      touch filename.txt
+    For files in nested directories that may not exist yet:
+      mkdir -p path/to/dir && touch path/to/dir/filename.txt
 
   • Do NOT invent or guess filenames. If you need the first/latest/any file
     in a directory and the exact name is not given, use shell glob expansion:
@@ -68,6 +72,10 @@ Examples (input → exact output, nothing else):
   kill port 3000            →  lsof -ti:3000 | xargs kill -9
   find files over 100MB     →  find . -type f -size +100M
   show disk usage           →  df -h
+  create a file test.txt        →  touch test.txt
+  create notes.md               →  touch notes.md
+  create file at src/main.py    →  mkdir -p src && touch src/main.py
+  make a new file called log    →  touch log
   open first image in Downloads → setsid xdg-open "$(ls ~/Downloads/*.{{jpg,jpeg,png,gif,webp,bmp}} 2>/dev/null | head -1)" >/dev/null 2>&1 &
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
