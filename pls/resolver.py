@@ -68,13 +68,70 @@ _CLEAR_TRASH_PATTERN = re.compile(
     re.I,
 )
 
-# ── File creation ───────────────────────────────────────────────────────────────
-# Matches: "create hello.txt", "create a file test.txt", "make a new file called notes.md",
-#          "create hello.txt file", "touch readme.md", "new file app.py"
+# ── File creation ─────────────────────────────────────────────────────────────
+# Pattern 1 — explicit extension: "create hello.txt", "make a file called app.py"
 _CREATE_FILE_PATTERN = re.compile(
     r"^(?:create|make|touch|new)\s+"
     r"(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+|named\s+)?"
     r"(?P<filename>[\w.\-/]+\.\w+)"  # filename must have an extension
+    r"(?:\s+file)?\s*$",
+    re.I,
+)
+
+# File-type word → extension (for "create python file named hello")
+_FILE_TYPE_EXT: dict[str, str] = {
+    "python":       "py",
+    "py":           "py",
+    "javascript":   "js",
+    "js":           "js",
+    "typescript":   "ts",
+    "ts":           "ts",
+    "bash":         "sh",
+    "shell":        "sh",
+    "sh":           "sh",
+    "script":       "sh",
+    "zsh":          "zsh",
+    "html":         "html",
+    "webpage":      "html",
+    "web":          "html",
+    "css":          "css",
+    "scss":         "scss",
+    "json":         "json",
+    "yaml":         "yaml",
+    "yml":          "yml",
+    "toml":         "toml",
+    "xml":          "xml",
+    "sql":          "sql",
+    "java":         "java",
+    "kotlin":       "kt",
+    "rust":         "rs",
+    "go":           "go",
+    "c":            "c",
+    "cpp":          "cpp",
+    "c++":          "cpp",
+    "cs":           "cs",
+    "csharp":       "cs",
+    "php":          "php",
+    "ruby":         "rb",
+    "swift":        "swift",
+    "r":            "r",
+    "lua":          "lua",
+    "markdown":     "md",
+    "md":           "md",
+    "text":         "txt",
+    "txt":          "txt",
+    "csv":          "csv",
+    "dockerfile":   "Dockerfile",
+    "makefile":     "Makefile",
+}
+
+# Pattern 2 — type-implied: "create python file named hello", "make a js file called app"
+_CREATE_TYPED_PATTERN = re.compile(
+    r"^(?:create|make|touch|new)\s+"
+    r"(?:a\s+)?(?:new\s+)?"
+    r"(?P<ftype>" + "|".join(re.escape(k) for k in sorted(_FILE_TYPE_EXT, key=len, reverse=True)) + r")\s+"
+    r"(?:file\s+)?(?:called\s+|named\s+)?"
+    r"(?P<name>[\w\-/]+)"
     r"(?:\s+file)?\s*$",
     re.I,
 )
@@ -207,6 +264,27 @@ def try_resolve_direct(request: str) -> str | None:
     m = _CREATE_FILE_PATTERN.match(request.strip())
     if m:
         filename = m.group("filename")
+        parent = Path(filename).parent
+        if str(parent) not in ("", "."):
+            return f"mkdir -p {parent} && touch {filename}"
+        return f"touch {filename}"
+
+    # ── Typed file creation: "create python file named hello" ─────────────────
+    # Normalise common two-word type names before matching
+    _norm = request.strip()
+    _norm = re.sub(r'\bshell\s+script\b', 'script', _norm, flags=re.I)
+    _norm = re.sub(r'\bweb\s+page\b',     'webpage', _norm, flags=re.I)
+    _norm = re.sub(r'\bweb\s+file\b',     'html',    _norm, flags=re.I)
+    m2 = _CREATE_TYPED_PATTERN.match(_norm)
+    if m2:
+        ftype = m2.group("ftype").lower()
+        name  = m2.group("name")
+        ext   = _FILE_TYPE_EXT.get(ftype, ftype)
+        # Special cases: Dockerfile / Makefile have no extension, just a fixed name
+        if ext in ("Dockerfile", "Makefile"):
+            filename = ext
+        else:
+            filename = f"{name}.{ext}" if "." not in name else name
         parent = Path(filename).parent
         if str(parent) not in ("", "."):
             return f"mkdir -p {parent} && touch {filename}"
