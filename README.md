@@ -190,20 +190,26 @@ Dangerous commands (`rm -rf`, `chmod 777`, `dd`, piping scripts into `bash`, etc
 
 ## Smart Commands
 
-NEURO includes a **built-in resolver** that handles common requests instantly — no AI round-trip needed. These resolve immediately with the exact right command:
+NEURO includes a **built-in resolver** that handles common requests instantly — **the AI is never consulted** for any of these. They all execute immediately with the exact right command:
 
 ### Open folders
 
-| What you say | What happens |
+All folder opens are resolved directly to `nautilus` — no AI, no delay.
+
+| What you say | What opens |
 |---|---|
-| `open downloads` | Opens `~/Downloads` in the file manager |
-| `open desktop` | Opens `~/Desktop` |
-| `open screenshots` | Opens `~/Pictures/Screenshots` |
-| `open documents` | Opens `~/Documents` |
-| `open trash` | Opens the Trash in Nautilus |
-| `open recycle bin` | Opens the Trash in Nautilus |
+| `open downloads` / `open downloads folder` | `~/Downloads` |
+| `open desktop` | `~/Desktop` |
+| `open screenshots` / `open screenshot folder` | `~/Pictures/Screenshots` |
+| `open pictures` / `open pictures folder` | `~/Pictures` |
+| `open documents` | `~/Documents` |
+| `open music` | `~/Music` |
+| `open videos` | `~/Videos` |
+| `open trash` / `open recycle bin` | Trash (via `trash:///` URI) |
 
 ### Open files from a folder
+
+Picks the actual file in Python — never guesses.
 
 | What you say | What happens |
 |---|---|
@@ -213,6 +219,18 @@ NEURO includes a **built-in resolver** that handles common requests instantly �
 | `open a pdf from documents` | Opens a random PDF |
 
 Supported file types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zip`, `archive`
+
+### Create files (AI bypassed entirely)
+
+| What you say | Command run |
+|---|---|
+| `create hello.txt` | `touch hello.txt` |
+| `create a file called notes.md` | `touch notes.md` |
+| `create python file named app` | `touch app.py` |
+| `create a shell script named deploy` | `touch deploy.sh` |
+| `create src/utils.py` | `mkdir -p src && touch src/utils.py` |
+
+Supports 30+ file types: Python, JS, TS, Bash, HTML, CSS, JSON, YAML, SQL, Rust, Go, Java, and more — extension inferred from type name.
 
 ### Trash actions (AI bypassed entirely)
 
