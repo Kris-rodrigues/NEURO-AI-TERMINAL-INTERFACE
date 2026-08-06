@@ -651,6 +651,17 @@ _FIND_NAMED_RE = re.compile(
 # ── Recursive keyword ─────────────────────────────────────────────────────────
 _RECURSIVE_RE = re.compile(r"\b(?:recursive(?:ly)?|all|everywhere|deep)\b", re.I)
 
+# 16. Catch-all: "find all <name> files" when name is not a known type
+_FIND_ANY_NAMED_RE = re.compile(
+    r"^(?:find|show|list)\s+(?:all\s+)?(?P<name>[a-zA-Z][\w\-]*)\s+files?\s*$",
+    re.I,
+)
+_FIND_SKIP_NAMES = {
+    "hidden", "dot", "large", "big", "huge", "heavy", "recent", "newest",
+    "empty", "broken", "dead", "invalid", "executable", "runnable",
+    "duplicate", "duplicated", "dupe", "binary",
+} | set(_FILE_TYPE_EXT.keys())
+
 
 def try_resolve_find(request: str) -> str | None:
     """
@@ -763,14 +774,22 @@ def try_resolve_find(request: str) -> str | None:
         d, _ = _extract_find_dir(req)
         return f"grep -rl '{text}' {d} 2>/dev/null"
 
-    # ── 15. Files matching name pattern ───────────────────────────────────────
+    # ── 15. Files matching name pattern: "find files named config*" ──────────
     m = _FIND_NAMED_RE.search(req)
     if m:
         pattern = m.group("pattern").strip()
-        # Wrap bare names in wildcards unless already a glob
         if "*" not in pattern and "?" not in pattern:
             pattern = f"*{pattern}*"
         d, _ = _extract_find_dir(req)
         return f"find {d} -type f -name '{pattern}' 2>/dev/null"
+
+    # ── 16. Catch-all: "find all <name> files" / "find <name> files" ─────────
+    # e.g. "find all readme files" → find . -iname '*readme*'
+    m = _FIND_ANY_NAMED_RE.match(req)
+    if m:
+        name = m.group("name").lower()
+        if name not in _FIND_SKIP_NAMES:
+            d, _ = _extract_find_dir(req)
+            return f"find {d} -type f -iname '*{name}*' 2>/dev/null"
 
     return None
