@@ -1,26 +1,33 @@
 #!/usr/bin/env python3
 """
 pls interactive — talk directly to the AI in your terminal.
-No 'pls' prefix needed. Just type naturally.
+No prefix needed. Just type naturally.
+
+Inline flags (append to any request):
+  --explain          also explain what the command does
+  --yes              skip confirmation and run immediately
+  --dry-run          show the command but don't run it
+  --provider NAME    override the AI provider for this request
+  --model NAME       override the model for this request
+  --api-url URL      override the API URL for this request
+  --last             show the last generated command (no request needed)
 """
 
 import os
+import re
 import sys
 import signal
 
 # ── Add pls package to path (no venv activation needed) ──────────────────────
-# Resolve the project root relative to this script — works after cloning
 _BASE = os.path.dirname(os.path.abspath(__file__))
 _VENV_SITE = os.path.join(_BASE, ".venv", "lib")
 
-# Find site-packages under .venv/lib/pythonX.X/site-packages
 if os.path.isdir(_VENV_SITE):
     for entry in os.listdir(_VENV_SITE):
         sp = os.path.join(_VENV_SITE, entry, "site-packages")
         if os.path.isdir(sp) and sp not in sys.path:
             sys.path.insert(0, sp)
 
-# Add the project root so 'pls' package is importable
 if _BASE not in sys.path:
     sys.path.insert(0, _BASE)
 
@@ -42,8 +49,24 @@ from pls.executor import run
 from pls.cli import _clean_command, _is_chat_response, _strip_chat_tag
 from pls.resolver import try_resolve, try_resolve_direct, try_resolve_app
 
-console    = Console()
+console     = Console()
 err_console = Console(stderr=True)
+
+# ── Last-command persistence ──────────────────────────────────────────────────
+_CACHE_DIR  = os.path.expanduser("~/.cache/neuro")
+_LAST_CMD   = os.path.join(_CACHE_DIR, "last_command")
+
+def _save_last(cmd: str) -> None:
+    os.makedirs(_CACHE_DIR, exist_ok=True)
+    with open(_LAST_CMD, "w") as f:
+        f.write(cmd)
+
+def _load_last() -> str | None:
+    try:
+        with open(_LAST_CMD) as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
 
 # ── Graceful Ctrl+C ───────────────────────────────────────────────────────────
 def _on_sigint(sig, frame):
@@ -53,8 +76,68 @@ def _on_sigint(sig, frame):
 signal.signal(signal.SIGINT, _on_sigint)
 
 
-def _execute_command(command: str) -> None:
-    """Display, confirm, and run a shell command."""
+# ── Flag parser ───────────────────────────────────────────────────────────────
+class Flags:
+    __slots__ = ("explain", "yes", "dry_run", "provider", "model", "api_url", "last")
+
+    def __init__(self):
+        self.explain:  bool        = False
+        self.yes:      bool        = False
+        self.dry_run:  bool        = False
+        self.provider: str | None  = None
+        self.model:    str | None  = None
+        self.api_url:  str | None  = None
+        self.last:     bool        = False
+
+
+_FLAG_RE = re.compile(
+    r"""(?x)
+    --explain\b
+    | --yes\b
+    | --dry-run\b
+    | --provider\s+(\S+)
+    | --model\s+(\S+)
+    | --api-url\s+(\S+)
+    | --last\b
+    """,
+    re.I,
+)
+
+
+def _parse_flags(raw: str) -> tuple[str, Flags]:
+    """Strip inline flags from the request string and return (clean_request, flags)."""
+    flags = Flags()
+
+    def _apply(m: re.Match) -> str:
+        tok = m.group(0).lower()
+        if tok.startswith("--explain"):
+            flags.explain = True
+        elif tok.startswith("--yes"):
+            flags.yes = True
+        elif tok.startswith("--dry-run"):
+            flags.dry_run = True
+        elif tok.startswith("--provider"):
+            flags.provider = m.group(1)
+        elif tok.startswith("--model"):
+            flags.model = m.group(2)
+        elif tok.startswith("--api-url"):
+            flags.api_url = m.group(3)
+        elif tok.startswith("--last"):
+            flags.last = True
+        return ""
+
+    clean = _FLAG_RE.sub(_apply, raw).strip()
+    return clean, flags
+
+
+# ── Execute helper ────────────────────────────────────────────────────────────
+def _execute_command(command: str, flags: Flags | None = None) -> None:
+    """Display, confirm (respecting flags), and run a shell command."""
+    if flags is None:
+        flags = Flags()
+
+    _save_last(command)
+
     safety = analyze(command)
 
     border = {
@@ -77,75 +160,96 @@ def _execute_command(command: str) -> None:
         label = "Caution" if safety.level == RiskLevel.CAUTION else "DANGEROUS"
         console.print(f" [{border}]{icon} {label}:[/{border}] {', '.join(safety.warnings)}")
 
-    if safety.level == RiskLevel.DANGEROUS:
-        console.print("\n [red bold]Run this dangerous command?[/red bold] [dim](y/N/e)[/dim] ", end="")
-        default_run = False
+    # --dry-run: show only, don't run
+    if flags.dry_run:
+        console.print("\n [dim]Dry run — command not executed.[/dim]")
+        console.print()
+        return
+
+    # --yes: auto-confirm (but NOT for dangerous commands — safety first)
+    if flags.yes and safety.level != RiskLevel.DANGEROUS:
+        console.print()
     else:
-        console.print("\n [bold bright_green]Run it?[/bold bright_green] [dim](Y/n/e)[/dim] ", end="")
-        default_run = True
+        if safety.level == RiskLevel.DANGEROUS:
+            console.print("\n [red bold]Run this dangerous command?[/red bold] [dim](y/N/e)[/dim] ", end="")
+            default_run = False
+        else:
+            console.print("\n [bold bright_green]Run it?[/bold bright_green] [dim](Y/n/e)[/dim] ", end="")
+            default_run = True
 
-    try:
-        choice = input().strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        console.print("\n[dim]Cancelled.[/dim]")
-        return
-
-    if choice == "e":
         try:
-            import readline
-            readline.set_startup_hook(lambda: readline.insert_text(command))
-            console.print(" [dim]Edit then press Enter:[/dim]")
-            command = input(" $ ").strip() or command
-        except Exception:
-            pass
-        finally:
-            try: readline.set_startup_hook()
-            except: pass
-    elif choice == "n" or (not choice and not default_run):
-        console.print("[dim]Cancelled.[/dim]")
-        return
-    elif not choice and default_run:
-        pass  # Enter = accept default
-    elif choice != "y":
-        console.print("[dim]Cancelled.[/dim]")
-        return
+            choice = input().strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Cancelled.[/dim]")
+            return
 
-    console.print()
+        if choice == "e":
+            try:
+                import readline
+                readline.set_startup_hook(lambda: readline.insert_text(command))
+                console.print(" [dim]Edit then press Enter:[/dim]")
+                command = input(" $ ").strip() or command
+                _save_last(command)
+            except Exception:
+                pass
+            finally:
+                try: readline.set_startup_hook()
+                except: pass
+        elif choice == "n" or (not choice and not default_run):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+        elif not choice and default_run:
+            pass
+        elif choice != "y":
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
     console.print()
     result = run(command)
 
     if result.interrupted:
         console.print("[yellow]Interrupted.[/yellow]")
     elif result.exit_code == 0:
-        console.print(f"[bold bright_green]✓ Done.[/bold bright_green]")
+        console.print("[bold bright_green]✓ Done.[/bold bright_green]")
     else:
         console.print(f"[red bold]✗ Failed[/red bold] [dim](exit {result.exit_code})[/dim]")
     console.print()
 
 
-def _ask(request: str) -> None:
+# ── Main AI request handler ───────────────────────────────────────────────────
+def _ask(request: str, flags: Flags | None = None) -> None:
     """Send one request to the AI and handle the response."""
+    if flags is None:
+        flags = Flags()
 
     # ── Direct command resolution (bypasses AI entirely) ──────────────────────
-    # Used for safety-critical exact operations like "clear trash".
     direct_cmd = try_resolve_direct(request)
     if direct_cmd is not None:
-        _execute_command(direct_cmd)
+        _execute_command(direct_cmd, flags)
         return
 
     # ── Pre-resolve file/folder-open requests ─────────────────────────────────
-    # Rewrites vague requests to concrete paths before sending to the AI.
     resolved = try_resolve(request)
     if resolved is not None:
         request = resolved
     else:
-        # ── App launcher — find installed binary and skip the AI ───────────────
         app_cmd = try_resolve_app(request)
         if app_cmd is not None:
-            _execute_command(app_cmd)
+            _execute_command(app_cmd, flags)
             return
 
+    # ── Build config (with per-request overrides) ──────────────────────────────
     config = load_config()
+
+    if flags.provider:
+        config.setdefault("default", {})["provider"] = flags.provider
+    if flags.model:
+        provider_name = flags.provider or get_provider_name(config)
+        config.setdefault(provider_name, {})["model"] = flags.model
+    if flags.api_url:
+        provider_name = flags.provider or get_provider_name(config)
+        config.setdefault(provider_name, {})["api_url"] = flags.api_url
+
     provider_name = get_provider_name(config)
 
     try:
@@ -155,7 +259,7 @@ def _ask(request: str) -> None:
         return
 
     context = gather(request)
-    system_prompt = build_system_prompt(context, explain=False)
+    system_prompt = build_system_prompt(context, explain=flags.explain)
     user_message  = build_user_message(request)
 
     with console.status("[bold bright_cyan]  thinking...", spinner="dots12"):
@@ -185,11 +289,42 @@ def _ask(request: str) -> None:
         err_console.print("[yellow]Could not generate a command. Try rephrasing.[/yellow]")
         return
 
-    _execute_command(command)
+    # --explain: show the explanation block after the command panel
+    if flags.explain and "\n#" in raw:
+        explanation = "\n".join(
+            line for line in raw.splitlines() if line.strip().startswith("#")
+        )
+        console.print()
+        console.print(Panel(
+            Markdown(explanation.replace("# ", "")),
+            title="[bold dim]explanation[/bold dim]",
+            border_style="dim",
+            box=box.ROUNDED,
+            padding=(0, 1),
+        ))
+
+    _execute_command(command, flags)
 
 
-
+# ── Entry point ───────────────────────────────────────────────────────────────
 def main():
+    # ── Stdin pipe mode: echo "do something" | python pls_interactive.py ──────
+    if not sys.stdin.isatty():
+        for line in sys.stdin:
+            line = line.strip()
+            if line:
+                request, flags = _parse_flags(line)
+                if flags.last:
+                    cmd = _load_last()
+                    if cmd:
+                        console.print(f"[dim]Last command:[/dim] [bold]{cmd}[/bold]")
+                    else:
+                        console.print("[dim]No previous command found.[/dim]")
+                elif request:
+                    _ask(request, flags)
+        return
+
+    # ── Interactive REPL ──────────────────────────────────────────────────────
     console.print()
     console.print(Rule("[bold bright_magenta]AI SESSION STARTED[/bold bright_magenta]", style="bright_magenta"))
     console.print()
@@ -199,7 +334,8 @@ def main():
     hint.append("exit", style="bold bright_cyan")
     hint.append(" or ", style="dim white")
     hint.append("Ctrl+C", style="bold bright_cyan")
-    hint.append(" to return to shell.", style="dim white")
+    hint.append(" to return to shell.  Flags: ", style="dim white")
+    hint.append("--explain  --yes  --dry-run  --last  --provider  --model", style="dim cyan")
     console.print(hint)
     console.print()
 
@@ -217,7 +353,30 @@ def main():
             console.print("\n[dim]Back to shell. See you![/dim]\n")
             break
 
-        _ask(user_input)
+        # Parse flags from the input
+        request, flags = _parse_flags(user_input)
+
+        # --last: just print the last command, no AI
+        if flags.last or request.strip() == "--last":
+            cmd = _load_last()
+            if cmd:
+                console.print()
+                console.print(Panel(
+                    Syntax(cmd, "bash", theme="monokai"),
+                    title="[bold dim]last command[/bold dim]",
+                    border_style="dim",
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                ))
+                console.print()
+            else:
+                console.print("[dim]No previous command recorded yet.[/dim]\n")
+            continue
+
+        if not request:
+            continue
+
+        _ask(request, flags)
 
 
 if __name__ == "__main__":
