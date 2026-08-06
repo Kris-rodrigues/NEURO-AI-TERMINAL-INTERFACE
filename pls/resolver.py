@@ -331,29 +331,77 @@ _FOLDER_KEYWORDS = set(_DIR_ALIASES) | {
     "trash", "bin", "recycle",
 }
 
-# Common name → binary aliases for apps whose display name ≠ binary name
+# Common name → binary aliases for apps whose display name ≠ binary name.
+# Values can be a single binary OR a space-separated "binary arg" string.
+# Multiple candidates separated by | are tried left to right.
 _APP_ALIASES: dict[str, str] = {
+    # Code editors
     "vs code":              "code",
     "vscode":               "code",
     "visual studio code":   "code",
-    "android studio":       "android-studio",
+    "sublime":              "subl",
+    "sublime text":         "subl",
+    "atom":                 "atom",
+    "neovim":               "nvim",
+
+    # Browsers
     "google chrome":        "google-chrome",
     "chrome":               "google-chrome",
     "chromium":             "chromium-browser",
     "brave":                "brave-browser",
+    "brave browser":        "brave-browser",
+    "firefox browser":      "firefox",
+    "edge":                 "microsoft-edge",
+    "microsoft edge":       "microsoft-edge",
+
+    # File manager
     "file manager":         "nautilus",
     "files":                "nautilus",
+    "file browser":         "nautilus",
+
+    # Text editors
     "text editor":          "gedit",
+    "gedit":                "gedit",
+    "gnome text editor":    "gnome-text-editor",
+
+    # Calculator — try multiple binaries in the resolver
+    "calculator":           "gnome-calculator",
+    "calc":                 "gnome-calculator",
+    "gnome calculator":     "gnome-calculator",
+
+    # System tools
     "system monitor":       "gnome-system-monitor",
     "task manager":         "gnome-system-monitor",
-    "calculator":           "gnome-calculator",
+    "system settings":      "gnome-control-center",
+    "settings":             "gnome-control-center",
     "screenshot tool":      "gnome-screenshot",
+    "screenshots":          "gnome-screenshot",
+    "disk usage":           "baobab",
+    "disk analyzer":        "baobab",
+
+    # Media
+    "video player":         "totem",
+    "music player":         "rhythmbox",
+    "image viewer":         "eog",
+    "photo viewer":         "eog",
+    "photos":               "eog",
     "obs studio":           "obs",
+
+    # Office
     "libreoffice writer":   "libreoffice --writer",
     "libreoffice calc":     "libreoffice --calc",
     "libreoffice impress":  "libreoffice --impress",
+    "word processor":       "libreoffice --writer",
+    "spreadsheet":          "libreoffice --calc",
+    "presentation":         "libreoffice --impress",
+
+    # VMs / tools
+    "android studio":       "android-studio",
     "virtual machine":      "virtualbox",
     "vm":                   "virtualbox",
+    "docker desktop":       "docker",
+    "postman":              "postman",
+    "dbeaver":              "dbeaver",
 }
 
 # .desktop search paths (XDG standard)

@@ -130,6 +130,80 @@ def _parse_flags(raw: str) -> tuple[str, Flags]:
     return clean, flags
 
 
+# ── Command explainer ─────────────────────────────────────────────────────────
+def _explain_command(cmd: str) -> str:
+    """Return a plain-English one-liner explaining what a shell command does."""
+    c = cmd.strip()
+
+    # File creation
+    if c.startswith("touch ") and "&&" not in c:
+        fname = c.split()[1]
+        return f"Creates an empty file **{fname}** (or updates its timestamp if it already exists)."
+    if "mkdir -p" in c and "touch" in c:
+        fname = c.rsplit(None, 1)[-1]
+        return f"Creates the directory tree if needed, then creates an empty file **{fname}**."
+
+    # Folder / file opens
+    if "nautilus" in c and "trash:///" in c:
+        return "Opens the system Trash folder in the Nautilus file manager."
+    if "nautilus" in c:
+        path = c.split('"')[1] if '"' in c else ""
+        return f"Opens **{path or 'the folder'}** in the Nautilus file manager as a detached background process."
+    if "xdg-open" in c:
+        path = c.split('"')[1] if '"' in c else ""
+        return f"Opens **{path or 'the file'}** with the default application registered for that file type."
+
+    # Trash management
+    if "gio trash --empty" in c:
+        return "Permanently deletes all files in the Trash using the system trash manager (`gio`)."
+
+    # find patterns
+    if "find" in c:
+        if "-name '.*'" in c:
+            depth = "up to 3 levels deep" if "-maxdepth" in c else "recursively (all depths)"
+            return f"Searches {depth} for hidden files (dotfiles — names starting with `.`), excluding `.` and `..`."
+        if "-size +" in c:
+            size_part = c.split("-size +")[1].split()[0]
+            return f"Finds all files larger than **{size_part}** and lists them sorted by size (largest first)."
+        if "-mtime -1" in c:
+            return "Lists all files modified in the last **24 hours**."
+        if "-mtime -" in c:
+            days = c.split("-mtime -")[1].split()[0]
+            return f"Lists all files modified in the last **{days} day(s)**."
+        if "-type f -empty" in c:
+            return "Finds all empty (zero-byte) files."
+        if "-type d -empty" in c:
+            return "Finds all empty directories (nothing inside)."
+        if "-xtype l" in c:
+            return "Finds all broken symbolic links — links pointing to a target that no longer exists."
+        if "-executable" in c:
+            return "Finds all files with the executable bit set (scripts, binaries, etc.)."
+        if "md5sum" in c or "fdupes" in c:
+            return "Identifies duplicate files by comparing their content hashes."
+        if "-iname" in c:
+            pat = c.split("-iname ")[1].split()[0].strip("'")
+            return f"Case-insensitive recursive search for files matching `{pat}`."
+        if "-name '*." in c:
+            ext = c.split("-name '*.")[1].split("'")[0]
+            return f"Recursively finds all `.{ext}` files."
+        if "-name '" in c:
+            pat = c.split("-name '")[1].split("'")[0]
+            return f"Finds all files whose name matches the pattern `{pat}`."
+
+    # grep
+    if c.startswith("grep -rl"):
+        parts = c.split("'")
+        text = parts[1] if len(parts) > 1 else "the pattern"
+        return f"Recursively lists every file that contains the text **'{text}'**."
+
+    # Generic app launch (setsid)
+    if c.startswith("setsid ") and ">/dev/null" in c:
+        app = c.split()[1]
+        return f"Launches **{app}** as a detached background process — closing the terminal won't kill it."
+
+    return "Runs the command in your current shell session."
+
+
 # ── Execute helper ────────────────────────────────────────────────────────────
 def _execute_command(command: str, flags: Flags | None = None) -> None:
     """Display, confirm (respecting flags), and run a shell command."""
@@ -137,6 +211,18 @@ def _execute_command(command: str, flags: Flags | None = None) -> None:
         flags = Flags()
 
     _save_last(command)
+
+    # ── --explain: show what this command does before the prompt ──────────────
+    if flags.explain:
+        explanation = _explain_command(command)
+        console.print()
+        console.print(Panel(
+            Markdown(explanation),
+            title="[bold dim]what this does[/bold dim]",
+            border_style="dim cyan",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        ))
 
     safety = analyze(command)
 
@@ -311,20 +397,6 @@ def _ask(request: str, flags: Flags | None = None) -> None:
     if not command:
         err_console.print("[yellow]Could not generate a command. Try rephrasing.[/yellow]")
         return
-
-    # --explain: show the explanation block after the command panel
-    if flags.explain and "\n#" in raw:
-        explanation = "\n".join(
-            line for line in raw.splitlines() if line.strip().startswith("#")
-        )
-        console.print()
-        console.print(Panel(
-            Markdown(explanation.replace("# ", "")),
-            title="[bold dim]explanation[/bold dim]",
-            border_style="dim",
-            box=box.ROUNDED,
-            padding=(0, 1),
-        ))
 
     _execute_command(command, flags)
 
