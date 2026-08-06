@@ -122,7 +122,51 @@ Or let it start automatically via the shell config above. Once inside, just type
 
 NEURO decides on its own whether to generate a shell command or answer conversationally. Press `Ctrl+C` or type `exit` / `quit` to return to your regular shell.
 
-#### Confirmation prompts
+---
+
+### Inline Flags
+
+Append flags to the end of any request — they work exactly like CLI flags but inside the REPL (no prefix needed):
+
+| Flag | Description |
+|---|---|
+| `--explain` | Also show a plain-English explanation of what the command does |
+| `--yes` | Skip the confirmation prompt and run immediately (safe commands only) |
+| `--dry-run` | Show the command but never execute it |
+| `--last` | Show the last generated command without asking the AI |
+| `--provider NAME` | Override the AI provider for this request |
+| `--model NAME` | Override the model for this request |
+| `--api-url URL` | Override the API URL for this request |
+
+**Examples:**
+
+```
+▶ find files bigger than 100MB --explain
+▶ kill whatever is using port 3000 --yes
+▶ show disk usage sorted by size --dry-run
+▶ rename all .jpeg files to .jpg --explain --yes
+▶ convert video.mp4 to gif --provider openai --model gpt-4o
+▶ do something --api-url http://localhost:8080
+▶ --last
+```
+
+> [!NOTE]
+> `--yes` is blocked for `DANGEROUS`-rated commands (e.g. `rm -rf`). Those always require explicit confirmation regardless of flags.
+
+---
+
+### Pipe from stdin
+
+You can pipe requests directly into NEURO without entering the interactive REPL:
+
+```bash
+echo "show disk usage" | python pls_interactive.py
+echo "list files bigger than 50MB --dry-run" | python pls_interactive.py
+```
+
+---
+
+### Confirmation prompts
 
 When NEURO generates a shell command it always shows it and asks before running:
 
@@ -138,7 +182,7 @@ When NEURO generates a shell command it always shows it and asks before running:
 - Press `n` → cancel
 - Press `e` → edit the command inline before running
 
-#### Safety
+### Safety
 
 Dangerous commands (`rm -rf`, `chmod 777`, `dd`, piping scripts into `bash`, etc.) are flagged in red with a ☠ warning, and the default flips to **no** (`y/N`).
 
