@@ -47,7 +47,7 @@ from pls.providers import ProviderError, get_provider
 from pls.safety import RiskLevel, analyze
 from pls.executor import run
 from pls.cli import _clean_command, _is_chat_response, _strip_chat_tag
-from pls.resolver import try_resolve, try_resolve_direct, try_resolve_app
+from pls.resolver import try_resolve, try_resolve_direct, try_resolve_app, try_resolve_find
 
 console     = Console()
 err_console = Console(stderr=True)
@@ -255,8 +255,13 @@ def _ask(request: str, flags: Flags | None = None) -> None:
         if app_cmd is not None:
             _execute_command(app_cmd, flags)
             return
+    # ── Pattern-matching find commands ─────────────────────────────────────────
+    # Handles 'find hidden files', 'find files bigger than 100MB', etc.
+    find_cmd = try_resolve_find(request)
+    if find_cmd is not None:
+        _execute_command(find_cmd, flags)
+        return
 
-    # ── Build config (with per-request overrides) ──────────────────────────────
     config = load_config()
 
     if flags.provider:

@@ -501,3 +501,276 @@ def try_resolve_app(request: str) -> str | None:
 
     return f"setsid {binary} >/dev/null 2>&1 &"
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Pattern-matching find resolver
+# Handles 10 common "find files by …" scenarios without touching the AI.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ── Directory extractor ───────────────────────────────────────────────────────
+_FIND_DIR_RE = re.compile(
+    r"\b(?:in|inside|within|at|from|under)\s+"
+    r"(?:the\s+)?"
+    r"(?P<dir>(?:current\s+(?:folder|directory|dir)|here|\.\.?)"
+    r"|(?:[\w~./\-]+))"
+    r"(?:\s+(?:folder|directory|dir))?\s*",
+    re.I,
+)
+
+
+def _extract_find_dir(request: str) -> tuple[str, str]:
+    """Extract 'in <dir>' from a find request. Returns (resolved_dir, clean_request)."""
+    # Words that look like preposition objects but are NOT directory names
+    _STOP = {
+        "a", "an", "the", "last", "any", "some", "all",
+        "that", "this", "those", "these", "which",
+        "folder", "directory", "dir", "here",
+    }
+    m = _FIND_DIR_RE.search(request)
+    if not m:
+        return ".", request
+    raw = m.group("dir").strip().lower()
+    if raw in _STOP or len(raw) <= 1:
+        return ".", request
+    raw = m.group("dir").strip()
+    if raw.lower() in (".", "..", "current folder", "current directory", "current dir"):
+        dir_path = "."
+    else:
+        resolved = _resolve_dir(raw)
+        dir_path = str(resolved) if resolved else raw
+    clean = (request[: m.start()] + " " + request[m.end() :]).strip()
+    return dir_path, clean
+
+
+
+# ── Individual find patterns ──────────────────────────────────────────────────
+
+# 1. Hidden / dotfiles
+_FIND_HIDDEN_RE = re.compile(
+    r"\b(?:find|show|list|search\s+for|look\s+for)\b.{0,20}?"
+    r"\b(?:hidden|dot)\s*(?:files?|folders?|items?)?\b",
+    re.I,
+)
+
+# 2. Files bigger than X unit
+_FIND_BIGGER_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,30}?"
+    r"(?:bigger|larger|greater|more)\s+than\s+"
+    r"(?P<size>\d+)\s*(?P<unit>KB|MB|GB|TB)\b",
+    re.I,
+)
+
+# 3. Generic "large files"
+_FIND_LARGE_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\b(?:large|big|huge|heavy)\s+files?\b",
+    re.I,
+)
+
+# 4. Modified today
+_FIND_TODAY_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\bfiles?\b.{0,20}?"
+    r"\b(?:modified|changed|updated)\s+today\b",
+    re.I,
+)
+
+# 5. Modified in last N days
+_FIND_NDAYS_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\bfiles?\b.{0,20}?"
+    r"(?:modified|changed|updated).{0,10}?(?:last\s+)?(?P<n>\d+)\s+days?\b",
+    re.I,
+)
+
+# 6. Recently modified (generic)
+_FIND_RECENT_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?"
+    r"\b(?:recent(?:ly\s+(?:modified|changed|updated))?|newest)\s+files?\b",
+    re.I,
+)
+
+# 7. Empty files
+_FIND_EMPTY_FILES_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\bempty\s+files?\b",
+    re.I,
+)
+
+# 8. Empty directories
+_FIND_EMPTY_DIRS_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\bempty\s+(?:folders?|directories|dirs?)\b",
+    re.I,
+)
+
+# 9. Broken symlinks
+_FIND_BROKEN_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\b(?:broken|dead|invalid)\s+"
+    r"(?:symlinks?|links?|symbolic\s+links?)\b",
+    re.I,
+)
+
+# 10. Executable files
+_FIND_EXEC_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\b(?:executable|runnable|binary)\s+files?\b",
+    re.I,
+)
+
+# 11. Duplicate files
+_FIND_DUPES_RE = re.compile(
+    r"\b(?:find|show|list)\b.{0,20}?\b(?:duplicate|duplicated|dupe)\s+files?\b",
+    re.I,
+)
+
+# 12. Files by glob extension: "find all *.py files", "find .log files"
+_FIND_GLOB_EXT_RE = re.compile(
+    r"\b(?:find|show|list)\b\s+(?:all\s+)?(?:\*\.|\.)(?P<ext>[\w]+)\s+files?",
+    re.I,
+)
+
+# 13. Files by language name: "find all python files", "find javascript files"
+_FIND_LANG_RE = re.compile(
+    r"\b(?:find|show|list)\b\s+(?:all\s+)?"
+    r"(?P<lang>" + "|".join(re.escape(k) for k in sorted(_FILE_TYPE_EXT, key=len, reverse=True)) + r")\s+"
+    r"(?:source\s+)?files?\b",
+    re.I,
+)
+
+# 14. Files containing text: "find files containing 'TODO'"
+_FIND_CONTAINING_RE = re.compile(
+    r"\b(?:find|search|grep|look\s+for)\b\s+"
+    r"(?:files?\s+)?(?:containing|with\s+text|that\s+(?:contain|have|include))\s+"
+    r"[\"']?(?P<text>[^\"']+?)[\"']?\s*$",
+    re.I,
+)
+
+# 15. Files by name pattern: "find files named *.log", "find files called config*"
+_FIND_NAMED_RE = re.compile(
+    r"\b(?:find|show|list)\b\s+(?:all\s+)?files?\s+"
+    r"(?:named?|called|matching|with\s+name)\s+"
+    r"[\"']?(?P<pattern>[\w.*?\-]+)[\"']?\s*$",
+    re.I,
+)
+
+# ── Recursive keyword ─────────────────────────────────────────────────────────
+_RECURSIVE_RE = re.compile(r"\b(?:recursive(?:ly)?|all|everywhere|deep)\b", re.I)
+
+
+def try_resolve_find(request: str) -> str | None:
+    """
+    If the request matches a common file-search pattern, return the exact
+    shell `find` / `grep` command — bypassing the AI entirely.
+
+    Returns the shell command string, or None if no pattern matches.
+    """
+    req = request.strip()
+
+    # ── 1. Hidden / dotfiles ──────────────────────────────────────────────────
+    if _FIND_HIDDEN_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        depth = "" if _RECURSIVE_RE.search(req) else " -maxdepth 3"
+        return (
+            f"find {d}{depth} -name '.*'"
+            f" -not -name '.' -not -name '..' 2>/dev/null"
+        )
+
+    # ── 2. Files bigger than N KB/MB/GB ──────────────────────────────────────
+    m = _FIND_BIGGER_RE.search(req)
+    if m:
+        size = m.group("size")
+        suffix = {"kb": "k", "mb": "M", "gb": "G", "tb": "T"}[m.group("unit").lower()]
+        d, _ = _extract_find_dir(req)
+        return (
+            f"find {d} -type f -size +{size}{suffix}"
+            f" -exec ls -lh {{}} \\; 2>/dev/null | sort -rh"
+        )
+
+    # ── 3. Large files (generic, >100 MB) ────────────────────────────────────
+    if _FIND_LARGE_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return (
+            f"find {d} -type f -size +100M"
+            f" -exec ls -lh {{}} \\; 2>/dev/null | sort -rh"
+        )
+
+    # ── 4. Modified today ─────────────────────────────────────────────────────
+    if _FIND_TODAY_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -mtime -1 2>/dev/null | sort"
+
+    # ── 5. Modified in last N days ────────────────────────────────────────────
+    m = _FIND_NDAYS_RE.search(req)
+    if m:
+        n = m.group("n")
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -mtime -{n} 2>/dev/null | sort"
+
+    # ── 6. Recently modified (last 7 days) ────────────────────────────────────
+    if _FIND_RECENT_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return (
+            f"find {d} -type f -mtime -7"
+            f" -exec ls -lt {{}} \\; 2>/dev/null | head -20"
+        )
+
+    # ── 7. Empty files ────────────────────────────────────────────────────────
+    if _FIND_EMPTY_FILES_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -empty 2>/dev/null"
+
+    # ── 8. Empty directories ──────────────────────────────────────────────────
+    if _FIND_EMPTY_DIRS_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type d -empty 2>/dev/null"
+
+    # ── 9. Broken symlinks ────────────────────────────────────────────────────
+    if _FIND_BROKEN_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -xtype l 2>/dev/null"
+
+    # ── 10. Executable files ──────────────────────────────────────────────────
+    if _FIND_EXEC_RE.search(req):
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -executable 2>/dev/null"
+
+    # ── 11. Duplicate files ───────────────────────────────────────────────────
+    if _FIND_DUPES_RE.search(req):
+        import shutil as _sh
+        d, _ = _extract_find_dir(req)
+        if _sh.which("fdupes"):
+            return f"fdupes -r {d}"
+        return (
+            f"find {d} -type f -exec md5sum {{}} \\; 2>/dev/null"
+            f" | sort | awk 'seen[$1]++'"
+        )
+
+    # ── 12. By glob extension: "find all *.log files" ────────────────────────
+    m = _FIND_GLOB_EXT_RE.search(req)
+    if m:
+        ext = m.group("ext").lower()
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -name '*.{ext}' 2>/dev/null"
+
+    # ── 13. By language name: "find all python files" ────────────────────────
+    m = _FIND_LANG_RE.search(req)
+    if m:
+        lang = m.group("lang").lower()
+        ext  = _FILE_TYPE_EXT.get(lang, lang)
+        if ext not in ("Dockerfile", "Makefile"):
+            d, _ = _extract_find_dir(req)
+            return f"find {d} -type f -name '*.{ext}' 2>/dev/null"
+
+    # ── 14. Files containing text ─────────────────────────────────────────────
+    m = _FIND_CONTAINING_RE.search(req)
+    if m:
+        text = m.group("text").strip().strip("'\"")
+        d, _ = _extract_find_dir(req)
+        return f"grep -rl '{text}' {d} 2>/dev/null"
+
+    # ── 15. Files matching name pattern ───────────────────────────────────────
+    m = _FIND_NAMED_RE.search(req)
+    if m:
+        pattern = m.group("pattern").strip()
+        # Wrap bare names in wildcards unless already a glob
+        if "*" not in pattern and "?" not in pattern:
+            pattern = f"*{pattern}*"
+        d, _ = _extract_find_dir(req)
+        return f"find {d} -type f -name '{pattern}' 2>/dev/null"
+
+    return None
