@@ -68,6 +68,17 @@ _CLEAR_TRASH_PATTERN = re.compile(
     re.I,
 )
 
+# ── File creation ───────────────────────────────────────────────────────────────
+# Matches: "create hello.txt", "create a file test.txt", "make a new file called notes.md",
+#          "create hello.txt file", "touch readme.md", "new file app.py"
+_CREATE_FILE_PATTERN = re.compile(
+    r"^(?:create|make|touch|new)\s+"
+    r"(?:a\s+)?(?:new\s+)?(?:file\s+)?(?:called\s+|named\s+)?"
+    r"(?P<filename>[\w.\-/]+\.\w+)"  # filename must have an extension
+    r"(?:\s+file)?\s*$",
+    re.I,
+)
+
 # ── Selection strategy keywords ───────────────────────────────────────────────
 _PICK_FIRST   = re.compile(r"\b(first|oldest|earliest)\b", re.I)
 _PICK_LAST    = re.compile(r"\b(last|latest|newest|recent|most.recent)\b", re.I)
@@ -192,6 +203,15 @@ def try_resolve_direct(request: str) -> str | None:
 
     Returns the exact shell command string, or None if no match.
     """
+    # ── File creation: "create hello.txt", "make a file called notes.md" ──────
+    m = _CREATE_FILE_PATTERN.match(request.strip())
+    if m:
+        filename = m.group("filename")
+        parent = Path(filename).parent
+        if str(parent) not in ("", "."):
+            return f"mkdir -p {parent} && touch {filename}"
+        return f"touch {filename}"
+
     # ── "open trash" / "open recycle bin" ─────────────────────────────────
     # Use the trash:/// URI — works even if ~/.local/share/Trash doesn't exist yet
     if _OPEN_TRASH_PATTERN.search(request):
@@ -210,6 +230,7 @@ def try_resolve_direct(request: str) -> str | None:
             )
 
     return None
+
 
 
 # ═════════════════════════════════════════════════════════════════════════════
