@@ -108,31 +108,38 @@ _BRIGHTNESS_MIN_RE = re.compile(
 def _brightness_cmd(level: float) -> str:
     """
     Return a shell command that sets screen brightness to `level` (0.0–1.0).
-    Uses xrandr with auto-detected display; falls back to sysfs intel_backlight.
+
+    Priority:
+      1. brightnessctl set X%          — best: hardware control, no sudo needed
+      2. sudo tee /sys/class/backlight  — fallback, prompts for password once
+    Note: xrandr --brightness is intentionally NOT used — it applies a software
+    gamma that GNOME's compositor ignores, so it has no visible effect.
     """
     import shutil as _sh
-    level = max(0.05, min(1.0, level))          # clamp: never go fully black
-    level_str = f"{level:.2f}"
-
-    if _sh.which("xrandr"):
-        # Auto-detect the first connected display at runtime
-        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
-        return f"xrandr --output {detect} --brightness {level_str}"
-
-    # Fallback: write directly to sysfs (needs write permission)
     from pathlib import Path as _P
-    bl_dirs = list(_P("/sys/class/backlight").iterdir()) if _P("/sys/class/backlight").exists() else []
-    if bl_dirs:
-        bl = bl_dirs[0]
-        max_file = bl / "max_brightness"
-        try:
-            max_val = int(max_file.read_text().strip())
-            target = int(max_val * level)
-            return f"echo {target} | sudo tee {bl}/brightness > /dev/null"
-        except Exception:
-            pass
 
-    return f"echo 'No brightness tool found. Install brightnessctl or xrandr.'"
+    level   = max(0.05, min(1.0, level))       # never go fully black
+    pct     = int(round(level * 100))           # 0-100 for brightnessctl
+
+    if _sh.which("brightnessctl"):
+        return f"brightnessctl set {pct}%"
+
+    # Sysfs fallback — needs sudo (user in sudo group, password prompt is OK)
+    bl_root = _P("/sys/class/backlight")
+    if bl_root.exists():
+        bl_dirs = [d for d in bl_root.iterdir() if (d / "brightness").exists()]
+        if bl_dirs:
+            bl = bl_dirs[0]
+            try:
+                max_val = int((bl / "max_brightness").read_text().strip())
+                target  = max(1, int(max_val * level))
+                return f"echo {target} | sudo tee {bl}/brightness > /dev/null && echo 'Brightness set to {pct}%'"
+            except Exception:
+                pass
+
+    return (
+        "echo 'brightnessctl not found. Run: sudo apt install brightnessctl' >&2"
+    )
 
 # ── File creation ─────────────────────────────────────────────────────────────
 # Pattern 1 — explicit extension: "create hello.txt", "make a file called app.py"
@@ -380,23 +387,29 @@ def try_resolve_direct(request: str) -> str | None:
     if _BRIGHTNESS_MIN_RE.search(request):
         return _brightness_cmd(0.1)
 
-    # Increase / decrease (step ±20 % via a subshell reading current value)
+    # Increase / decrease brightness
     if _BRIGHTNESS_UP_RE.search(request):
-        # Read current value, add 0.2, clamp to 1.0
-        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
+        import shutil as _sh2
+        if _sh2.which("brightnessctl"):
+            return "brightnessctl set +20%"
+        # Sysfs fallback: read current, add 20%, clamp
         return (
-            f"DISP={detect}; "
-            f"CUR=$(xrandr --verbose | awk '/Brightness:/ {{print $2; exit}}'); "
-            f"NEW=$(python3 -c \"v=float('$CUR')+0.2; print(f'{{min(v,1.0):.2f}}')\" ); "
-            f"xrandr --output $DISP --brightness $NEW"
+            "BL=/sys/class/backlight/$(ls /sys/class/backlight | head -1); "
+            "MAX=$(cat $BL/max_brightness); "
+            "CUR=$(cat $BL/brightness); "
+            "NEW=$(python3 -c \"v=int('$CUR')+int('$MAX')*20//100; print(min(v,int('$MAX')))\"); "
+            "echo $NEW | sudo tee $BL/brightness > /dev/null && echo \"Brightness increased\""
         )
     if _BRIGHTNESS_DOWN_RE.search(request):
-        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
+        import shutil as _sh2
+        if _sh2.which("brightnessctl"):
+            return "brightnessctl set 20%-"
         return (
-            f"DISP={detect}; "
-            f"CUR=$(xrandr --verbose | awk '/Brightness:/ {{print $2; exit}}'); "
-            f"NEW=$(python3 -c \"v=float('$CUR')-0.2; print(f'{{max(v,0.05):.2f}}')\" ); "
-            f"xrandr --output $DISP --brightness $NEW"
+            "BL=/sys/class/backlight/$(ls /sys/class/backlight | head -1); "
+            "MAX=$(cat $BL/max_brightness); "
+            "CUR=$(cat $BL/brightness); "
+            "NEW=$(python3 -c \"v=int('$CUR')-int('$MAX')*20//100; print(max(v,int('$MAX')//20))\"); "
+            "echo $NEW | sudo tee $BL/brightness > /dev/null && echo \"Brightness decreased\""
         )
 
     # Set to exact value

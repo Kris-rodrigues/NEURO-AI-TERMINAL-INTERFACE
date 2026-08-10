@@ -69,6 +69,21 @@ else
     warn "Skipped psutil — dashboard will show N/A for hardware stats"
 fi
 
+# ── 4b. brightnessctl (hardware brightness control) ──────────────────────────
+echo ""
+if command -v brightnessctl &>/dev/null; then
+    success "brightnessctl already installed — brightness control ready"
+else
+    read -rp "  Install brightnessctl for 'set brightness to 50%' commands? [Y/n] " ans
+    if [[ "${ans,,}" != "n" ]]; then
+        info "Installing brightnessctl ..."
+        sudo apt-get install -y -q brightnessctl
+        success "brightnessctl installed — brightness control ready"
+    else
+        warn "Skipped brightnessctl — brightness commands will require sudo each time"
+    fi
+fi
+
 # ── 5. Optional: GUI overlay (pystray + pillow) ────────────────────────────────
 echo ""
 read -rp "  Install pystray + pillow for the floating GUI overlay? [Y/n] " ans
