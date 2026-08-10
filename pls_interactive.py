@@ -68,6 +68,147 @@ def _load_last() -> str | None:
     except FileNotFoundError:
         return None
 
+# ── Session state (lives for the duration of one REPL run) ───────────────────
+_session: dict[str, str | None] = {
+    "last_file":      None,   # absolute path of the last generated code file
+    "last_code_task": None,   # original task string (used by 'regenerate')
+}
+
+# ── Code-generation patterns ──────────────────────────────────────────────────
+_CODEGEN_RE = re.compile(
+    r"^(?:create|write|make|build|generate|code|program)\b.{0,40}?"
+    r"\b(?:program|script|code|function|app|application|tool|class)\b",
+    re.I,
+)
+_EDIT_FILE_RE = re.compile(
+    r"^(?:edit|open|show|modify|change)\s+(?:the\s+)?(?:file|code|script|program|last\s*file|that\s*file)\s*$",
+    re.I,
+)
+_REGENERATE_RE = re.compile(
+    r"^(?:regenerate|redo|re-?generate|rewrite\s*it|try\s+again|do\s+it\s+again|generate\s+again|redo\s+it)\s*$",
+    re.I,
+)
+
+# Map language name/extension → syntax highlighter token
+_LANG_SYNTAX: dict[str, str] = {
+    "python": "python", "py":    "python",
+    "javascript": "javascript", "js": "javascript",
+    "typescript": "typescript", "ts": "typescript",
+    "bash": "bash",   "sh":  "bash",
+    "shell": "bash",  "zsh": "bash",
+    "html":  "html",  "css": "css",
+    "rust":  "rust",  "rs":  "rust",
+    "go":    "go",
+    "java":  "java",
+    "c":     "c",     "cpp": "cpp",  "c++": "cpp",
+    "ruby":  "ruby",  "rb":  "ruby",
+    "php":   "php",
+    "swift": "swift",
+    "kotlin":"kotlin",
+    "sql":   "sql",
+    "yaml":  "yaml",  "json": "json",
+    "toml":  "toml",
+    "lua":   "lua",
+    "r":     "r",
+    "txt":   "text",
+}
+
+# Extension per language (for filename inference)
+_LANG_EXT: dict[str, str] = {
+    "python": "py", "javascript": "js", "typescript": "ts",
+    "bash": "sh", "shell": "sh", "rust": "rs", "ruby": "rb",
+    "c++": "cpp", "html": "html", "css": "css", "go": "go",
+    "java": "java", "php": "php", "swift": "swift",
+    "kotlin": "kt", "sql": "sql", "lua": "lua",
+}
+
+
+def _detect_language(request: str) -> str:
+    """Infer the programming language from the request. Defaults to 'python'."""
+    for lang in ("javascript", "typescript", "bash", "shell", "rust", "golang",
+                 "java", "ruby", "php", "swift", "kotlin", "html", "css",
+                 "sql", "lua", "c++", "cpp", "python", "go"):
+        if re.search(r'\b' + re.escape(lang) + r'\b', request, re.I):
+            return lang.replace("golang", "go").replace("cpp", "c++")
+    return "python"  # sensible default
+
+
+def _infer_filename(task: str, lang: str) -> str:
+    """Generate a snake_case filename from the task description."""
+    # Strip common prefixes
+    task = re.sub(r'^(?:create|write|make|build|generate|code)\s+(?:a\s+)?(?:program|script|code|function|app|tool)?\s*(?:to|that|for|which)?\s*', '', task, flags=re.I).strip()
+    # Take first 4 significant words
+    words = re.findall(r'[a-zA-Z]+', task)[:4]
+    name  = "_".join(w.lower() for w in words) or "program"
+    ext   = _LANG_EXT.get(lang, lang[:2] if len(lang) > 2 else lang)
+    return f"{name}.{ext}"
+
+
+def _extract_code(raw: str) -> tuple[str, str]:
+    """
+    Extract code and language from an AI response.
+    Returns (language, code_body).
+    """
+    # Try fenced code block first
+    m = re.search(r'```(\w*)\n(.*?)```', raw, re.DOTALL)
+    if m:
+        lang = m.group(1).strip().lower() or "python"
+        return lang, m.group(2).strip()
+    # No fences — take the whole response as code
+    return "python", raw.strip()
+
+
+def _run_codegen(request: str, flags: Flags, llm, config: dict) -> None:
+    """Ask the AI to generate code, write it to a file, show a preview."""
+    import shutil as _sh
+
+    lang = _detect_language(request)
+    filename = _infer_filename(request, lang)
+    filepath = os.path.join(os.getcwd(), filename)
+
+    # Build a code-generation specific prompt
+    codegen_system = (
+        f"You are a code generator. The user wants a {lang} program.\n"
+        "Return ONLY the complete, working source code — no explanation, no markdown, "
+        "no code fences, no comments about what you are doing. "
+        "The output must be valid, runnable code that can be saved directly to a file. "
+        f"Use {lang} syntax. Include helpful inline comments in the code itself."
+    )
+    user_msg = request
+
+    with console.status("[bold bright_cyan]  generating code...", spinner="dots12"):
+        try:
+            from pls.providers import ProviderError
+            raw = llm.generate(codegen_system, user_msg)
+        except ProviderError as e:
+            err_console.print(f"\n[red bold]Error:[/red bold] {e}")
+            return
+
+    # Strip any accidental markdown fences
+    detected_lang, code = _extract_code(raw)
+    # Trust the explicit language if AI returned a different one
+    syntax_lang = _LANG_SYNTAX.get(detected_lang, _LANG_SYNTAX.get(lang, "python"))
+
+    # Write the file
+    with open(filepath, "w") as f:
+        f.write(code + "\n")
+
+    # Update session
+    _session["last_file"]      = filepath
+    _session["last_code_task"] = request
+
+    # Show preview
+    console.print()
+    console.print(Panel(
+        Syntax(code, syntax_lang, theme="monokai", line_numbers=True, word_wrap=True),
+        title=f"[bold bright_green]  {filename}[/bold bright_green]  [dim](saved)[/dim]",
+        border_style="bright_green",
+        box=box.ROUNDED,
+        padding=(0, 1),
+    ))
+    console.print(f"[dim]  Saved to [/dim][bold]{filepath}[/bold]")
+    console.print("[dim]  Say [bold]'edit file'[/bold] to open it, or [bold]'regenerate'[/bold] to redo.\n[/dim]")
+
 # ── Graceful Ctrl+C ───────────────────────────────────────────────────────────
 def _on_sigint(sig, frame):
     console.print("\n\n[dim]Session ended. Back to shell.[/dim]\n")
@@ -308,6 +449,42 @@ def _ask(request: str, flags: Flags | None = None) -> None:
     if flags is None:
         flags = Flags()
 
+    # ── 'edit file' — open the last generated file in an editor ──────────────
+    if _EDIT_FILE_RE.match(request.strip()):
+        fpath = _session["last_file"]
+        if not fpath or not os.path.exists(fpath):
+            console.print("[yellow]No file to edit yet. Generate one first.[/yellow]")
+            return
+        import shutil as _sh2
+        editor = (
+            _sh2.which("gnome-text-editor") or
+            _sh2.which("code") or
+            _sh2.which("gedit") or
+            "nano"
+        )
+        if editor == "nano":
+            _execute_command(f'nano "{fpath}"', flags)
+        else:
+            _execute_command(f'setsid {editor} "{fpath}" >/dev/null 2>&1 &', flags)
+        return
+
+    # ── 'regenerate' — redo the last code generation task ────────────────────
+    if _REGENERATE_RE.match(request.strip()):
+        if not _session["last_code_task"]:
+            console.print("[yellow]Nothing to regenerate yet.[/yellow]")
+            return
+        # Rebuild config and llm then fall through to codegen
+        request = _session["last_code_task"]
+        config = load_config()
+        provider_name = get_provider_name(config)
+        try:
+            llm = get_provider(provider_name, config)
+        except ProviderError as e:
+            err_console.print(f"[red bold]Error:[/red bold] {e}")
+            return
+        _run_codegen(request, flags, llm, config)
+        return
+
     # ── Direct command resolution (bypasses AI entirely) ──────────────────────
     direct_cmd = try_resolve_direct(request)
     if direct_cmd is not None:
@@ -365,6 +542,11 @@ def _ask(request: str, flags: Flags | None = None) -> None:
         llm = get_provider(provider_name, config)
     except ProviderError as e:
         err_console.print(f"[red bold]Error:[/red bold] {e}")
+        return
+
+    # ── Code generation: "create a program to X", "write a script that Y" ─────
+    if _CODEGEN_RE.search(request):
+        _run_codegen(request, flags, llm, config)
         return
 
     context = gather(request)
