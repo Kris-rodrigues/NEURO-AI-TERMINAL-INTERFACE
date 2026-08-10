@@ -359,12 +359,16 @@ _APP_ALIASES: dict[str, str] = {
     "files":                "nautilus",
     "file browser":         "nautilus",
 
-    # Text editors
-    "text editor":          "gedit",
+    # Text editors — prefer gnome-text-editor (installed), fall back to gedit
+    "text editor":          "gnome-text-editor",
+    "notepad":              "gnome-text-editor",
+    "note pad":             "gnome-text-editor",
     "gedit":                "gedit",
     "gnome text editor":    "gnome-text-editor",
+    "mousepad":             "mousepad",
+    "kate":                 "kate",
 
-    # Calculator — try multiple binaries in the resolver
+    # Calculator
     "calculator":           "gnome-calculator",
     "calc":                 "gnome-calculator",
     "gnome calculator":     "gnome-calculator",
@@ -403,6 +407,68 @@ _APP_ALIASES: dict[str, str] = {
     "postman":              "postman",
     "dbeaver":              "dbeaver",
 }
+
+# ── Settings panel resolver ───────────────────────────────────────────────────
+# Maps common setting names → gnome-control-center panel IDs
+_SETTINGS_PANELS: dict[str, str] = {
+    "brightness":           "display",
+    "display":              "display",
+    "screen":               "display",
+    "resolution":           "display",
+    "monitor":              "display",
+    "wifi":                 "wifi",
+    "wireless":             "wifi",
+    "network":              "network",
+    "internet":             "network",
+    "vpn":                  "network",
+    "bluetooth":            "bluetooth",
+    "sound":                "sound",
+    "audio":                "sound",
+    "volume":               "sound",
+    "microphone":           "sound",
+    "speaker":              "sound",
+    "printer":              "printers",
+    "printers":             "printers",
+    "keyboard":             "keyboard",
+    "mouse":                "mouse",
+    "touchpad":             "mouse",
+    "trackpad":             "mouse",
+    "power":                "power",
+    "battery":              "power",
+    "energy":               "power",
+    "sleep":                "power",
+    "users":                "user-accounts",
+    "accounts":             "user-accounts",
+    "user":                 "user-accounts",
+    "privacy":              "privacy",
+    "notifications":        "notifications",
+    "accessibility":        "universal-access",
+    "appearance":           "background",
+    "wallpaper":            "background",
+    "background":           "background",
+    "theme":                "background",
+    "date":                 "datetime",
+    "time":                 "datetime",
+    "datetime":             "datetime",
+    "timezone":             "datetime",
+    "language":             "region",
+    "region":               "region",
+    "locale":               "region",
+    "apps":                 "applications",
+    "default apps":         "applications",
+    "startup":              "applications",
+    "sharing":              "sharing",
+    "color":                "color",
+    "night light":          "display",
+    "dark mode":            "background",
+}
+
+# Pattern: "open brightness settings", "open display settings", etc.
+_OPEN_SETTINGS_RE = re.compile(
+    r"^(?:open|show|launch)\s+(?:the\s+)?"
+    r"(?P<panel>[\w\s]+?)\s+settings?\s*$",
+    re.I,
+)
 
 # .desktop search paths (XDG standard)
 _DESKTOP_DIRS = [
@@ -526,6 +592,17 @@ def try_resolve_app(request: str) -> str | None:
 
     Returns the shell command string, or None if the app can't be found.
     """
+    import shutil as _sh
+
+    # ── Settings panels: "open brightness settings", "open wifi settings" ─────
+    sm = _OPEN_SETTINGS_RE.match(request.strip())
+    if sm and _sh.which("gnome-control-center"):
+        panel_key = sm.group("panel").strip().lower()
+        # Try exact key, then first-word key
+        panel_id = _SETTINGS_PANELS.get(panel_key) or _SETTINGS_PANELS.get(panel_key.split()[0])
+        if panel_id:
+            return f"setsid gnome-control-center {panel_id} >/dev/null 2>&1 &"
+
     m = _LAUNCH_PATTERN.match(request.strip())
     if not m:
         return None
