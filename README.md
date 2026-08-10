@@ -8,6 +8,7 @@
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
   <a href="#smart-commands">Smart Commands</a> •
+  <a href="#code-generation">Code Generation</a> •
   <a href="#providers">Providers</a> •
   <a href="#gui-overlay">GUI Overlay</a> •
   <a href="#terminal-dashboard">Terminal Dashboard</a> •
@@ -23,7 +24,7 @@
 
 ---
 
-NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it in plain English — or any language — without any command prefix. It automatically decides whether your input needs a runnable shell command or a conversational answer. It ships with three interfaces:
+NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it in plain English — or any language — without any command prefix. It automatically decides whether your input needs a runnable shell command, a conversational answer, or a generated code file. It ships with three interfaces:
 
 | Interface | Description |
 |---|---|
@@ -36,12 +37,16 @@ NEURO is a **biopunk-themed AI assistant built for your terminal**. Talk to it i
 ## Features
 
 - 🧠 **Dual-mode AI** — automatically decides between a runnable shell command and a conversational answer
-- 🗂️ **Smart resolver** — instantly opens folders, files, and trash without waiting for the AI to respond
-- 🛡️ **Safety analysis** — dangerous commands (`rm -rf`, `chmod 777`, `dd`, etc.) are highlighted in red and require explicit opt-in
-- ✏️ **Inline edit** — press `e` at any confirmation prompt to edit the command before running it
+- 💡 **Code generation** — say "create a program to X", get a syntax-highlighted file written instantly
+- 🗂️ **Smart resolver** — instantly opens folders, files, apps, and settings without waiting for the AI
+- ☀️ **Brightness control** — "set brightness to 50%" works directly via hardware (no AI round-trip)
+- ⚙️ **Settings panels** — "open wifi settings", "open display settings" opens the right GNOME panel
+- 🛡️ **Safety analysis** — dangerous commands (`rm -rf`, `chmod 777`, `dd`, etc.) are highlighted in red
+- ✏️ **Inline edit** — press `e` at any confirmation prompt to edit the command before running
+- 🔍 **Pattern-matched search** — "find hidden files", "find files bigger than 100MB" runs instantly
 - 🔌 **Multi-provider** — Ollama (local, default), OpenAI, Anthropic, LM Studio, llama.cpp, any OpenAI-compatible endpoint
 - 💻 **GUI overlay** — a floating dark-theme window with a system-tray icon, no terminal needed
-- 🖥️ **Live hardware dashboard** — CPU/GPU/RAM/Disk bars with temperature, clock speed, and power draw on every terminal open
+- 🖥️ **Live hardware dashboard** — CPU/GPU/RAM/Disk bars with temperature and clock speed on every terminal open
 - 📡 **Context-aware** — passes your OS, shell, and current directory to the LLM for accurate commands
 - 🔒 **Private by default** — no data sent anywhere when using Ollama
 
@@ -57,10 +62,11 @@ cd NEURO-AI-TERMINAL-INTERFACE
 bash install.sh
 ```
 
-That's it. The installer will:
+The installer will:
 - ✅ Create a Python virtual environment
-- ✅ Install all dependencies automatically
+- ✅ Install all Python dependencies automatically
 - ✅ Ask if you want hardware stats (`psutil`) and GUI support (`pystray` + `pillow`)
+- ✅ Install `brightnessctl` for hardware brightness control (recommended)
 - ✅ Add NEURO to your `~/.bashrc` or `~/.zshrc` so it starts on every terminal
 
 **Open a new terminal** after install — the dashboard and REPL will launch automatically.
@@ -88,6 +94,9 @@ pip install psutil
 
 # Optional: floating GUI overlay + system tray icon
 pip install pystray pillow
+
+# Optional: hardware brightness control
+sudo apt install brightnessctl
 ```
 
 Then add this to your `~/.bashrc` or `~/.zshrc`:
@@ -115,23 +124,24 @@ Or let it start automatically via the shell config above. Once inside, just type
 ```
 ▶ find files bigger than 100MB
 ▶ kill whatever is using port 3000
-▶ convert video.mp4 to gif
+▶ open wifi settings
+▶ set brightness to 70%
+▶ create a python program to sort a list
 ▶ what is the difference between grep and ripgrep?
-▶ explain how SSH tunnelling works
 ```
 
-NEURO decides on its own whether to generate a shell command or answer conversationally. Press `Ctrl+C` or type `exit` / `quit` to return to your regular shell.
+NEURO decides whether to generate a shell command, answer conversationally, or write a code file. Press `Ctrl+C` or type `exit` / `quit` to return to your shell.
 
 ---
 
 ### Inline Flags
 
-Append flags to the end of any request — they work exactly like CLI flags but inside the REPL (no prefix needed):
+Append flags to the end of any request — they work inside the REPL with no prefix:
 
 | Flag | Description |
 |---|---|
-| `--explain` | Also show a plain-English explanation of what the command does |
-| `--yes` | Skip the confirmation prompt and run immediately (safe commands only) |
+| `--explain` | Show a plain-English explanation of what the command does |
+| `--yes` | Skip the confirmation prompt and run immediately |
 | `--dry-run` | Show the command but never execute it |
 | `--last` | Show the last generated command without asking the AI |
 | `--provider NAME` | Override the AI provider for this request |
@@ -144,20 +154,17 @@ Append flags to the end of any request — they work exactly like CLI flags but 
 ▶ find files bigger than 100MB --explain
 ▶ kill whatever is using port 3000 --yes
 ▶ show disk usage sorted by size --dry-run
-▶ rename all .jpeg files to .jpg --explain --yes
-▶ convert video.mp4 to gif --provider openai --model gpt-4o
-▶ do something --api-url http://localhost:8080
+▶ set brightness to 50% --explain
+▶ create a program to read a csv --model gpt-4o
 ▶ --last
 ```
 
 > [!NOTE]
-> `--yes` is blocked for `DANGEROUS`-rated commands (e.g. `rm -rf`). Those always require explicit confirmation regardless of flags.
+> `--yes` is blocked for `DANGEROUS`-rated commands (e.g. `rm -rf`). Those always require explicit confirmation.
 
 ---
 
 ### Pipe from stdin
-
-You can pipe requests directly into NEURO without entering the interactive REPL:
 
 ```bash
 echo "show disk usage" | python pls_interactive.py
@@ -190,18 +197,16 @@ Dangerous commands (`rm -rf`, `chmod 777`, `dd`, piping scripts into `bash`, etc
 
 ## Smart Commands
 
-NEURO includes a **built-in resolver** that handles common requests instantly — **the AI is never consulted** for any of these. They all execute immediately with the exact right command:
+NEURO includes a **built-in resolver pipeline** that handles common requests instantly — **the AI is never consulted** for any of these. They execute immediately with the exact right command.
 
 ### Open folders
-
-All folder opens are resolved directly to `nautilus` — no AI, no delay.
 
 | What you say | What opens |
 |---|---|
 | `open downloads` / `open downloads folder` | `~/Downloads` |
 | `open desktop` | `~/Desktop` |
 | `open screenshots` / `open screenshot folder` | `~/Pictures/Screenshots` |
-| `open pictures` / `open pictures folder` | `~/Pictures` |
+| `open pictures` | `~/Pictures` |
 | `open documents` | `~/Documents` |
 | `open music` | `~/Music` |
 | `open videos` | `~/Videos` |
@@ -218,9 +223,9 @@ Picks the actual file in Python — never guesses.
 | `open latest video from videos` | Opens the most recently modified video |
 | `open a pdf from documents` | Opens a random PDF |
 
-Supported file types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zip`, `archive`
+Supported types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zip`, `archive`
 
-### Create files (AI bypassed entirely)
+### Create files
 
 | What you say | Command run |
 |---|---|
@@ -230,37 +235,142 @@ Supported file types: `image`, `photo`, `video`, `audio`, `pdf`, `document`, `zi
 | `create a shell script named deploy` | `touch deploy.sh` |
 | `create src/utils.py` | `mkdir -p src && touch src/utils.py` |
 
-Supports 30+ file types: Python, JS, TS, Bash, HTML, CSS, JSON, YAML, SQL, Rust, Go, Java, and more — extension inferred from type name.
-
-### Trash actions (AI bypassed entirely)
-
-| What you say | What happens |
-|---|---|
-| `clear trash` | Runs `gio trash --empty` — empties the trash |
-| `empty the recycle bin` | Same |
+Supports 30+ file types — extension inferred from type name.
 
 ### Launch any app
 
-NEURO can open **any installed application** by name — no AI needed. It searches installed binaries and `.desktop` files across your system automatically.
+NEURO can open any installed application by name — no AI needed.
+
+| What you say | What launches |
+|---|---|
+| `open firefox` | Firefox |
+| `open google chrome` | Chrome |
+| `open vs code` | VS Code |
+| `open calculator` | GNOME Calculator |
+| `open notepad` | GNOME Text Editor |
+| `open text editor` | GNOME Text Editor |
+| `open file manager` | Nautilus |
+| `open system monitor` | GNOME System Monitor |
+| `open spotify` | Spotify (if installed) |
+| `open discord` | Discord (if installed) |
+| `open vlc` | VLC |
+| `open libreoffice writer` | LibreOffice Writer |
+
+If the app isn't found by alias → tries binary variations → searches `.desktop` files in Flatpak, Snap, and `~/.local/share/applications`.
+
+### Open System Settings panels
+
+"open X settings" opens the correct GNOME settings panel directly.
+
+| What you say | Panel opened |
+|---|---|
+| `open brightness settings` | Display (brightness slider) |
+| `open display settings` | Display |
+| `open wifi settings` | Wi-Fi |
+| `open network settings` | Network |
+| `open bluetooth settings` | Bluetooth |
+| `open sound settings` / `open audio settings` | Sound |
+| `open keyboard settings` | Keyboard |
+| `open mouse settings` / `open touchpad settings` | Mouse |
+| `open power settings` / `open battery settings` | Power |
+| `open privacy settings` | Privacy |
+| `open appearance settings` / `open wallpaper settings` | Background |
+| `open language settings` / `open region settings` | Region & Language |
+| `open date settings` / `open time settings` | Date & Time |
+| `open notifications settings` | Notifications |
+| `open accessibility settings` | Accessibility |
+
+### Screen brightness control
+
+Requires `brightnessctl` (`sudo apt install brightnessctl`). All commands execute instantly.
 
 | What you say | What happens |
 |---|---|
-| `open firefox` | Launches Firefox |
-| `open google chrome` | Launches Chrome |
-| `open vs code` | Launches VS Code (`code`) |
-| `open calculator` | Launches GNOME Calculator |
-| `open file manager` | Launches Nautilus |
-| `open spotify` | Launches Spotify (if installed) |
-| `open discord` | Launches Discord (if installed) |
-| `launch vlc` | Launches VLC |
-| `open libreoffice writer` | Launches LibreOffice Writer |
-| `start steam` | Launches Steam (if installed) |
+| `set brightness to 50` | Sets brightness to 50% |
+| `set brightness to 75%` | Sets brightness to 75% |
+| `brightness 30` | Sets to 30% |
+| `increase brightness` | Raises brightness by 20% |
+| `decrease brightness` | Lowers brightness by 20% |
+| `dim the screen` | Lowers brightness by 20% |
+| `brighten the screen` | Raises brightness by 20% |
+| `max brightness` / `full brightness` | 100% |
+| `minimum brightness` | 10% |
 
-**How it works:**
-1. Checks a built-in alias table (`google chrome` → `google-chrome`, `vs code` → `code`, etc.)
-2. Tries common binary-name variations (with hyphens, no spaces, last word)
-3. Searches `.desktop` files in `/usr/share/applications`, Flatpak, Snap, and `~/.local/share/applications`
-4. If the app isn't installed → falls through to the AI gracefully
+### Search / find files
+
+Pattern-matched — no AI, instant execution.
+
+| What you say | Command run |
+|---|---|
+| `find hidden files` / `find dotfiles` | `find . -name '.*' ...` |
+| `find files bigger than 100MB` | `find . -size +100M ...` |
+| `find empty files` | `find . -type f -empty` |
+| `find empty folders` | `find . -type d -empty` |
+| `find broken symlinks` | `find . -xtype l` |
+| `find executable files` | `find . -executable` |
+| `find files modified today` | `find . -mtime -1 ...` |
+| `find files changed in last 7 days` | `find . -mtime -7 ...` |
+| `find recently modified files` | `find . -mtime -1 ...` |
+| `find all log files` | `find . -name '*.log'` |
+| `find all python files` | `find . -iname '*python*'` |
+| `find all readme files` | `find . -iname '*readme*'` |
+| `find duplicate files` | `fdupes -r .` (or md5sum method) |
+| `find files containing TODO` | `grep -rl 'TODO' .` |
+
+### Trash actions
+
+| What you say | What happens |
+|---|---|
+| `clear trash` / `empty the recycle bin` | Runs `gio trash --empty` |
+
+---
+
+## Code Generation
+
+Say "create a program to X" or "write a script that Y" and NEURO will:
+
+1. **Detect the language** from your request (defaults to Python)
+2. **Infer a filename** from the task (`find_sum_two_numbers.py`)
+3. **Ask the AI** for complete, working code only — no markdown, no filler text
+4. **Write the file** to your current directory
+5. **Show a syntax-highlighted preview** with line numbers
+
+```
+▶ create a program to find the sum of two numbers
+```
+
+```
+╭──  find_sum_two_numbers.py  (saved) ─────────────────────╮
+│  1  # Find the sum of two numbers                        │
+│  2  def sum_two(a, b):                                   │
+│  3      """Return the sum of a and b."""                 │
+│  4      return a + b                                     │
+│  5                                                       │
+│  6  if __name__ == "__main__":                           │
+│  7      a = float(input("Enter first number: "))         │
+│  8      b = float(input("Enter second number: "))        │
+│  9      print(f"Sum: {sum_two(a, b)}")                   │
+╰──────────────────────────────────────────────────────────╯
+  Saved to /home/user/.../find_sum_two_numbers.py
+  Say 'edit file' to open it, or 'regenerate' to redo.
+```
+
+### After generating
+
+| What you say | What happens |
+|---|---|
+| `edit file` / `edit the file` / `open the code` | Opens the file in your text editor |
+| `regenerate` / `redo` / `try again` | Re-generates code for the same task, overwrites the file |
+
+### Supported languages (auto-detected from request)
+
+Python, JavaScript, TypeScript, Bash/Shell, Rust, Go, Java, Ruby, PHP, Swift, Kotlin, HTML, CSS, SQL, Lua, C++, YAML, JSON — and more.
+
+```
+▶ write a javascript program that fetches data from an API
+▶ create a bash script to backup my home folder
+▶ build a rust program to read a file line by line
+```
 
 ---
 
@@ -342,22 +452,9 @@ api_url = "http://localhost:1234/v1/chat/completions"
 model = ""
 ```
 
-Or for any custom OpenAI-compatible endpoint:
-
-```toml
-[default]
-provider = "custom"
-
-[custom]
-api_url = "http://localhost:8080"   # NEURO appends /v1/chat/completions
-model = "my-model"
-api_key = "sk-..."                  # optional
-```
-
 ### OpenAI / Anthropic
 
 ```bash
-# Set environment variables
 export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
@@ -382,8 +479,6 @@ model = "claude-sonnet-4-20250514"
 ## Config
 
 Config lives in `~/.config/pls/config.toml`.
-
-**Full default config:**
 
 ```toml
 [default]
@@ -421,14 +516,16 @@ api_key = ""
 ## How it works
 
 1. You type anything naturally in the REPL or GUI
-2. NEURO runs its **smart resolver pipeline** — common requests are handled instantly without any AI call:
-   - Trash open/clear → exact command, no AI
-   - Folder opens (Downloads, Screenshots, etc.) → file manager launched directly
-   - File picks ("open any image from Downloads") → real file found by Python glob
-   - App launches ("open spotify") → binary found via `which` or `.desktop` search
-3. If the resolver doesn't match, NEURO grabs context (OS, shell, current directory) and calls the LLM
-4. The LLM decides: **shell command** or **conversational answer**
-5. For shell commands: displays it colour-coded by risk level, waits for your confirmation
+2. NEURO runs its **smart resolver pipeline** — common requests execute instantly without any AI call:
+   - Brightness control → `brightnessctl set X%` (hardware, no sudo)
+   - Settings panels → `gnome-control-center <panel>`
+   - Folder/file opens → file manager launched directly
+   - File picks → real file found by Python glob
+   - App launches → binary found via `which` or `.desktop` search
+   - Find/search patterns → direct `find`/`grep` command
+3. Code generation requests → AI called with a "code-only" prompt → file written + preview shown
+4. Everything else → AI called with context (OS, shell, directory), returns a command or chat answer
+5. Shell commands: displayed colour-coded by risk level, waits for confirmation
 6. Runs the command and reports exit status
 
 No history stored. No data sent anywhere unless you use OpenAI or Anthropic.
@@ -446,7 +543,7 @@ NEURO-AI-TERMINAL-INTERFACE/
 │   ├── executor.py         # Shell command runner
 │   ├── gui.py              # Floating GUI overlay (tkinter + pystray)
 │   ├── prompt.py           # System prompt builder
-│   ├── resolver.py         # Smart command resolver (bypasses AI for known patterns)
+│   ├── resolver.py         # Smart resolver (bypasses AI for known patterns)
 │   ├── safety.py           # Dangerous-command detection
 │   └── providers/
 │       ├── __init__.py     # Provider registry
