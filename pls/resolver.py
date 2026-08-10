@@ -68,6 +68,72 @@ _CLEAR_TRASH_PATTERN = re.compile(
     re.I,
 )
 
+# ── Brightness control ────────────────────────────────────────────────────────
+# Matches: "set brightness to 50", "change brightness to 75%",
+#          "screen brightness 80", "brightness 50%", "50% brightness"
+_BRIGHTNESS_SET_RE = re.compile(
+    r"\b(?:set|change|adjust|make|put)\b.{0,20}?"
+    r"\b(?:screen\s+)?brightness\b.{0,10}?"
+    r"(?:to\s+)?(?P<val>\d+(?:\.\d+)?)\s*%?\s*$"
+    r"|"
+    r"\b(?:screen\s+)?brightness\s+(?:to\s+)?(?P<val2>\d+(?:\.\d+)?)\s*%?\s*$"
+    r"|"
+    r"(?P<val3>\d+(?:\.\d+)?)\s*%?\s+brightness\s*$",
+    re.I,
+)
+_BRIGHTNESS_UP_RE = re.compile(
+    r"\b(?:increase|raise|turn\s+up|boost|more)\b.{0,20}?\b(?:screen\s+)?brightness\b"
+    r"|\b(?:screen\s+)?brightness\s+(?:up|higher|more|brighter)\b"
+    r"|\bbrighten\b.{0,20}?\b(?:screen|display)?\b",
+    re.I,
+)
+_BRIGHTNESS_DOWN_RE = re.compile(
+    r"\b(?:decrease|lower|turn\s+down|reduce|less)\b.{0,20}?\b(?:screen\s+)?brightness\b"
+    r"|\b(?:screen\s+)?brightness\s+(?:down|lower|less|dimmer)\b"
+    r"|\bdim\b.{0,20}?\b(?:screen|display)?\b",
+    re.I,
+)
+_BRIGHTNESS_MAX_RE = re.compile(
+    r"\b(?:max(?:imum)?|full|100\s*%)\s+brightness\b"
+    r"|\bbrightness\s+(?:max(?:imum)?|full|100\s*%)\b",
+    re.I,
+)
+_BRIGHTNESS_MIN_RE = re.compile(
+    r"\b(?:min(?:imum)?|lowest?)\s+brightness\b"
+    r"|\bbrightness\s+(?:min(?:imum)?|lowest?)\b",
+    re.I,
+)
+
+
+def _brightness_cmd(level: float) -> str:
+    """
+    Return a shell command that sets screen brightness to `level` (0.0–1.0).
+    Uses xrandr with auto-detected display; falls back to sysfs intel_backlight.
+    """
+    import shutil as _sh
+    level = max(0.05, min(1.0, level))          # clamp: never go fully black
+    level_str = f"{level:.2f}"
+
+    if _sh.which("xrandr"):
+        # Auto-detect the first connected display at runtime
+        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
+        return f"xrandr --output {detect} --brightness {level_str}"
+
+    # Fallback: write directly to sysfs (needs write permission)
+    from pathlib import Path as _P
+    bl_dirs = list(_P("/sys/class/backlight").iterdir()) if _P("/sys/class/backlight").exists() else []
+    if bl_dirs:
+        bl = bl_dirs[0]
+        max_file = bl / "max_brightness"
+        try:
+            max_val = int(max_file.read_text().strip())
+            target = int(max_val * level)
+            return f"echo {target} | sudo tee {bl}/brightness > /dev/null"
+        except Exception:
+            pass
+
+    return f"echo 'No brightness tool found. Install brightnessctl or xrandr.'"
+
 # ── File creation ─────────────────────────────────────────────────────────────
 # Pattern 1 — explicit extension: "create hello.txt", "make a file called app.py"
 _CREATE_FILE_PATTERN = re.compile(
@@ -306,6 +372,43 @@ def try_resolve_direct(request: str) -> str | None:
                 "~/.local/share/Trash/info/* 2>/dev/null; "
                 "echo 'Trash emptied.'"
             )
+
+    # ── Brightness control ────────────────────────────────────────────────
+    # Max / min shortcuts first (before the generic set pattern)
+    if _BRIGHTNESS_MAX_RE.search(request):
+        return _brightness_cmd(1.0)
+    if _BRIGHTNESS_MIN_RE.search(request):
+        return _brightness_cmd(0.1)
+
+    # Increase / decrease (step ±20 % via a subshell reading current value)
+    if _BRIGHTNESS_UP_RE.search(request):
+        # Read current value, add 0.2, clamp to 1.0
+        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
+        return (
+            f"DISP={detect}; "
+            f"CUR=$(xrandr --verbose | awk '/Brightness:/ {{print $2; exit}}'); "
+            f"NEW=$(python3 -c \"v=float('$CUR')+0.2; print(f'{{min(v,1.0):.2f}}')\" ); "
+            f"xrandr --output $DISP --brightness $NEW"
+        )
+    if _BRIGHTNESS_DOWN_RE.search(request):
+        detect = "$(xrandr | awk '/ connected/ && !/disconnected/{print $1; exit}')"
+        return (
+            f"DISP={detect}; "
+            f"CUR=$(xrandr --verbose | awk '/Brightness:/ {{print $2; exit}}'); "
+            f"NEW=$(python3 -c \"v=float('$CUR')-0.2; print(f'{{max(v,0.05):.2f}}')\" ); "
+            f"xrandr --output $DISP --brightness $NEW"
+        )
+
+    # Set to exact value
+    m = _BRIGHTNESS_SET_RE.search(request)
+    if m:
+        raw = m.group("val") or m.group("val2") or m.group("val3")
+        if raw:
+            val = float(raw)
+            # If > 1, treat as percentage (50 → 0.50)
+            if val > 1.0:
+                val /= 100.0
+            return _brightness_cmd(val)
 
     return None
 
