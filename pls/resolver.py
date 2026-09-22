@@ -788,14 +788,14 @@ def _extract_find_dir(request: str) -> tuple[str, str]:
 
 # 1. Hidden / dotfiles
 _FIND_HIDDEN_RE = re.compile(
-    r"\b(?:find|show|list|search\s+for|look\s+for)\b.{0,20}?"
+    r"\b(?:find|show|list|search(?:\s+for)?|look\s+for)\b.{0,20}?"
     r"\b(?:hidden|dot)\s*(?:files?|folders?|items?)?\b",
     re.I,
 )
 
 # 2. Files bigger than X unit
 _FIND_BIGGER_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,30}?"
+    r"\b(?:find|show|list|search)\b.{0,30}?"
     r"(?:bigger|larger|greater|more)\s+than\s+"
     r"(?P<size>\d+)\s*(?P<unit>KB|MB|GB|TB)\b",
     re.I,
@@ -803,71 +803,71 @@ _FIND_BIGGER_RE = re.compile(
 
 # 3. Generic "large files"
 _FIND_LARGE_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\b(?:large|big|huge|heavy)\s+files?\b",
+    r"\b(?:find|show|list|search)\b.{0,20}?\b(?:large|big|huge|heavy)\s+files?\b",
     re.I,
 )
 
 # 4. Modified today
 _FIND_TODAY_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\bfiles?\b.{0,20}?"
+    r"\b(?:find|show|list|search)\b.{0,20}?\bfiles?\b.{0,20}?"
     r"\b(?:modified|changed|updated)\s+today\b",
     re.I,
 )
 
 # 5. Modified in last N days
 _FIND_NDAYS_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\bfiles?\b.{0,20}?"
+    r"\b(?:find|show|list|search)\b.{0,20}?\bfiles?\b.{0,20}?"
     r"(?:modified|changed|updated).{0,10}?(?:last\s+)?(?P<n>\d+)\s+days?\b",
     re.I,
 )
 
 # 6. Recently modified (generic)
 _FIND_RECENT_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?"
+    r"\b(?:find|show|list|search)\b.{0,20}?"
     r"\b(?:recent(?:ly\s+(?:modified|changed|updated))?|newest)\s+files?\b",
     re.I,
 )
 
 # 7. Empty files
 _FIND_EMPTY_FILES_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\bempty\s+files?\b",
+    r"\b(?:find|show|list|search)\b.{0,20}?\bempty\s+files?\b",
     re.I,
 )
 
 # 8. Empty directories
 _FIND_EMPTY_DIRS_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\bempty\s+(?:folders?|directories|dirs?)\b",
+    r"\b(?:find|show|list|search)\b.{0,20}?\bempty\s+(?:folders?|directories|dirs?)\b",
     re.I,
 )
 
 # 9. Broken symlinks
 _FIND_BROKEN_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\b(?:broken|dead|invalid)\s+"
+    r"\b(?:find|show|list|search)\b.{0,20}?\b(?:broken|dead|invalid)\s+"
     r"(?:symlinks?|links?|symbolic\s+links?)\b",
     re.I,
 )
 
 # 10. Executable files
 _FIND_EXEC_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\b(?:executable|runnable|binary)\s+files?\b",
+    r"\b(?:find|show|list|search)\b.{0,20}?\b(?:executable|runnable|binary)\s+files?\b",
     re.I,
 )
 
 # 11. Duplicate files
 _FIND_DUPES_RE = re.compile(
-    r"\b(?:find|show|list)\b.{0,20}?\b(?:duplicate|duplicated|dupe)\s+files?\b",
+    r"\b(?:find|show|list|search)\b.{0,20}?\b(?:duplicate|duplicated|dupe)\s+files?\b",
     re.I,
 )
 
 # 12. Files by glob extension: "find all *.py files", "find .log files"
 _FIND_GLOB_EXT_RE = re.compile(
-    r"\b(?:find|show|list)\b\s+(?:all\s+)?(?:\*\.|\.)(?P<ext>[\w]+)\s+files?",
+    r"\b(?:find|show|list|search)\b\s+(?:all\s+)?(?:\*\.|\.)(?P<ext>[\w]+)\s+files?",
     re.I,
 )
 
 # 13. Files by language name: "find all python files", "find javascript files"
 _FIND_LANG_RE = re.compile(
-    r"\b(?:find|show|list)\b\s+(?:all\s+)?"
+    r"\b(?:find|show|list|search)\b\s+(?:all\s+)?"
     r"(?P<lang>" + "|".join(re.escape(k) for k in sorted(_FILE_TYPE_EXT, key=len, reverse=True)) + r")\s+"
     r"(?:source\s+)?files?\b",
     re.I,
@@ -883,7 +883,7 @@ _FIND_CONTAINING_RE = re.compile(
 
 # 15. Files by name pattern: "find files named *.log", "find files called config*"
 _FIND_NAMED_RE = re.compile(
-    r"\b(?:find|show|list)\b\s+(?:all\s+)?files?\s+"
+    r"\b(?:find|show|list|search)\b\s+(?:all\s+)?files?\s+"
     r"(?:named?|called|matching|with\s+name)\s+"
     r"[\"']?(?P<pattern>[\w.*?\-]+)[\"']?\s*$",
     re.I,
@@ -894,7 +894,7 @@ _RECURSIVE_RE = re.compile(r"\b(?:recursive(?:ly)?|all|everywhere|deep)\b", re.I
 
 # 16. Catch-all: "find all <name> files" when name is not a known type
 _FIND_ANY_NAMED_RE = re.compile(
-    r"^(?:find|show|list)\s+(?:all\s+)?(?P<name>[a-zA-Z][\w\-]*)\s+files?\s*$",
+    r"^(?:find|show|list|search)\s+(?:all\s+)?(?P<name>[a-zA-Z][\w\-]*)\s+files?\s*$",
     re.I,
 )
 _FIND_SKIP_NAMES = {

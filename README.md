@@ -298,12 +298,12 @@ Requires `brightnessctl` (`sudo apt install brightnessctl`). All commands execut
 
 ### Search / find files
 
-Pattern-matched — no AI, instant execution.
+Pattern-matched — no AI, instant execution. You can say **`find`** or **`search`** interchangeably — both work.
 
 | What you say | Command run |
 |---|---|
-| `find hidden files` / `find dotfiles` | `find . -name '.*' ...` |
-| `find files bigger than 100MB` | `find . -size +100M ...` |
+| `find hidden files` / `search hidden files` | `find . -name '.*' ...` |
+| `find files bigger than 100MB` / `search files bigger than 100MB` | `find . -size +100M ...` |
 | `find empty files` | `find . -type f -empty` |
 | `find empty folders` | `find . -type d -empty` |
 | `find broken symlinks` | `find . -xtype l` |
